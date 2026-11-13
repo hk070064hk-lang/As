@@ -1,0 +1,1867 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>A列車でいこう・福島メトロポリス 3D (リアルジオラマ版)</title>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+      "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.webgpu.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+    }
+  }
+</script>
+<style>
+  :root {
+    --bg: #0b1018; --panel: rgba(15, 23, 36, 0.94); --border: #2c3d57;
+    --accent: #38bdf8; --gold: #fbbf24; --green: #10b981;
+    --pink: #f472b6; --red: #ef4444; --text: #f1f5f9; --sub: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+    background: var(--bg); color: var(--text);
+    overflow: hidden; height: 100vh; height: 100dvh; position: relative;
+  }
+
+  /* 全画面3Dビューポート */
+  #webgl-container { position: absolute; inset: 0; touch-action: none; }
+
+  /* 上部コンパクトHUD */
+  .top-hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    background: linear-gradient(180deg, rgba(10,15,24,0.92), rgba(10,15,24,0.65));
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 10px; gap: 6px; font-size: 0.74rem; z-index: 20; flex-wrap: wrap;
+    backdrop-filter: blur(6px);
+  }
+  .hud-left { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .metric { background: rgba(5,8,15,0.8); padding: 2px 7px; border-radius: 4px; border: 1px solid #334155; font-family: monospace; white-space: nowrap; }
+  .speed-btns { display: flex; gap: 3px; align-items: center; }
+  .spd-btn {
+    padding: 4px 7px; background: #1e293b; color: #cbd5e1; border: 1px solid #475569;
+    border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.72rem;
+  }
+  .spd-btn.active { background: var(--accent); color: #000; border-color: #fff; }
+
+  /* 右上ミニマップ＆クイック設定 */
+  .top-right-tools {
+    position: absolute; top: 52px; right: 8px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 15;
+  }
+  .minimap-box {
+    background: rgba(9, 13, 22, 0.85); border: 1px solid var(--border);
+    border-radius: 6px; padding: 3px; cursor: pointer;
+  }
+  #minimap { display: block; width: 96px; height: 96px; }
+
+  /* 左上・操作ガイド */
+  .status-pill {
+    position: absolute; top: 52px; left: 8px;
+    background: rgba(10, 15, 24, 0.82); border: 1px solid #334155;
+    border-radius: 6px; padding: 5px 9px; font-size: 0.71rem; z-index: 15;
+    pointer-events: none; max-width: 230px; backdrop-filter: blur(4px);
+  }
+
+  /* 確定アクションバー（A列車式：選んでから確定ボタンで誤爆ゼロ！） */
+  .confirm-bar {
+    position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+    background: rgba(12, 18, 30, 0.94); border: 2px solid var(--gold);
+    border-radius: 10px; padding: 8px 14px; z-index: 25;
+    display: none; align-items: center; gap: 10px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+    max-width: 94vw; flex-wrap: wrap; justify-content: center;
+  }
+  .confirm-info { font-size: 0.78rem; color: #f8fafc; text-align: center; }
+
+  /* 下部A列車メインコマンドドック */
+  .bottom-dock {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 54px;
+    background: rgba(11, 16, 27, 0.95); border-top: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 0 6px; z-index: 20; gap: 4px;
+  }
+  .dock-btn {
+    flex: 1; height: 42px; max-width: 140px;
+    background: #172033; border: 1px solid #334155; color: #cbd5e1;
+    border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.74rem;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .dock-btn.active { background: #1e3a8a; border-color: var(--accent); color: #fff; }
+
+  /* スライドアップドロワー（スマホでも見やすい半透明パネル） */
+  .drawer {
+    position: absolute; bottom: 54px; left: 0; right: 0;
+    max-height: 46vh; background: var(--panel);
+    border-top: 2px solid var(--accent);
+    z-index: 22; display: none; flex-direction: column;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.7);
+  }
+  .drawer.open { display: flex; }
+  .drawer-hdr {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 12px; border-bottom: 1px solid var(--border);
+    font-size: 0.82rem; font-weight: bold; color: var(--accent);
+  }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 10px; }
+
+  .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 6px; }
+  .tool-btn {
+    background: #0b1120; border: 1px solid #334155; color: var(--text);
+    padding: 8px; border-radius: 6px; cursor: pointer; text-align: left; font-size: 0.75rem;
+  }
+  .tool-btn.active { background: #1e3a8a; border-color: var(--gold); }
+  .tool-cost { display: block; font-size: 0.68rem; color: var(--gold); margin-top: 2px; font-family: monospace; }
+
+  .card {
+    background: #0b1120; border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px; margin-bottom: 7px; font-size: 0.76rem;
+  }
+  .card-hdr { display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 4px; gap: 6px; flex-wrap: wrap; }
+
+  button.btn {
+    padding: 6px 11px; border: none; border-radius: 5px; background: #2563eb;
+    color: #fff; font-weight: bold; cursor: pointer; font-size: 0.75rem;
+  }
+  button.btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+  button.btn-gold { background: #d97706; }
+  button.btn-green { background: #059669; }
+  button.btn-red { background: #dc2626; }
+  button.btn-purple { background: #7c3aed; }
+  button.btn-dark { background: #1e293b; border: 1px solid #475569; }
+  button.btn-sm { padding: 4px 8px; font-size: 0.72rem; }
+
+  select { background: #090d16; color: #fff; border: 1px solid #475569; border-radius: 4px; padding: 3px 5px; font-size: 0.74rem; }
+  textarea { user-select: text; }
+
+  /* 車窓＆街歩きオーバーレイ */
+  #cab-overlay { position: absolute; inset: 0; pointer-events: none; display: none; z-index: 16; }
+  .cab-frame-top { position: absolute; top: 44px; left: 0; right: 0; height: 14px; background: rgba(9,13,22,0.8); }
+  .cab-dash {
+    position: absolute; bottom: 54px; left: 0; right: 0; height: 44px;
+    background: linear-gradient(180deg, rgba(30,41,59,0.92), rgba(5,8,15,0.96));
+    border-top: 2px solid #475569; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; font-family: monospace; font-size: 0.76rem;
+  }
+
+  /* 街歩き用スティック（街歩きモード中のみ出現） */
+  .walk-pad {
+    display: none; position: absolute; bottom: 68px; left: 12px; z-index: 18;
+    grid-template-columns: 40px 40px 40px; grid-template-rows: 40px 40px; gap: 4px; opacity: 0.88;
+  }
+  .walk-btn {
+    background: rgba(15,23,42,0.9); border: 1px solid var(--green); color: #fff;
+    border-radius: 8px; font-weight: bold; display: flex; align-items: center; justify-content: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="webgl-container"></div>
+
+<!-- 上部HUD -->
+<div class="top-hud">
+  <div class="hud-left">
+    <span style="font-weight:bold;color:var(--gold);">🚆 A列車・福島</span>
+    <span id="gpu-badge" style="font-size:0.65rem;background:#064e3b;color:#6ee7b7;padding:1px 5px;border-radius:3px;">起動</span>
+    <div class="metric" id="hud-date" style="color:#38bdf8;">1年1日 08:00</div>
+    <div class="metric" id="hud-money" style="color:#fbbf24;">3.50億円</div>
+    <div class="metric" id="hud-pop" style="color:#f472b6;">18.0万人</div>
+    <div class="metric" id="hud-playtime" style="color:#34d399;">⏱000:00:00</div>
+  </div>
+  <div class="speed-btns">
+    <button class="spd-btn" onclick="setSimSpeed(0, this)">||</button>
+    <button class="spd-btn active" onclick="setSimSpeed(1, this)">1x</button>
+    <button class="spd-btn" onclick="setSimSpeed(4, this)">4x</button>
+    <button class="spd-btn" onclick="setSimSpeed(15, this)">15x</button>
+  </div>
+</div>
+
+<!-- 左上インスペクタ -->
+<div class="status-pill" id="inspector-pill">
+  <b>線路敷設</b><br>
+  タップで始点/終点を選択 →「敷設する」で確定<br>
+  <span style="color:#94a3b8;">1本指:地図移動 / 2本指(右):回転・ズーム</span>
+</div>
+
+<!-- 右上ミニマップ＆軽量化スイッチ -->
+<div class="top-right-tools">
+  <div class="minimap-box" title="クリックで移動">
+    <canvas id="minimap" width="96" height="96"></canvas>
+  </div>
+  <div style="display:flex;gap:4px;">
+    <button class="btn btn-sm btn-dark" id="btn-eco" onclick="toggleEcoMode()">🔋30fps</button>
+    <button class="btn btn-sm btn-dark" id="btn-shadow" onclick="toggleShadow()">☁️影OFF</button>
+  </div>
+  <button class="btn btn-sm btn-green" id="btn-walk" onclick="toggleWalkMode()">🚶 街歩き</button>
+  <button class="btn btn-sm btn-gold" id="btn-exit-cab" style="display:none;" onclick="exitTrainCab()">🚶 降車する</button>
+</div>
+
+<!-- 車窓HUD -->
+<div id="cab-overlay">
+  <div class="cab-frame-top"></div>
+  <div class="cab-dash">
+    <span style="color:#38bdf8;font-weight:bold;" id="cab-title">🚆 車窓モード</span>
+    <span style="color:#fbbf24;" id="cab-status">走行中</span>
+  </div>
+</div>
+
+<!-- 街歩き用パッド -->
+<div class="walk-pad" id="walk-pad">
+  <div></div>
+  <div class="walk-btn" ontouchstart="setPadKey('w',true)" ontouchend="setPadKey('w',false)" onmousedown="setPadKey('w',true)" onmouseup="setPadKey('w',false)">▲</div>
+  <div></div>
+  <div class="walk-btn" ontouchstart="setPadKey('a',true)" ontouchend="setPadKey('a',false)" onmousedown="setPadKey('a',true)" onmouseup="setPadKey('a',false)">◀</div>
+  <div class="walk-btn" ontouchstart="setPadKey('s',true)" ontouchend="setPadKey('s',false)" onmousedown="setPadKey('s',true)" onmouseup="setPadKey('s',false)">▼</div>
+  <div class="walk-btn" ontouchstart="setPadKey('d',true)" ontouchend="setPadKey('d',false)" onmousedown="setPadKey('d',true)" onmouseup="setPadKey('d',false)">▶</div>
+</div>
+
+<!-- ★ 誤爆ゼロ！確認バー ★ -->
+<div class="confirm-bar" id="confirm-bar">
+  <div class="confirm-info" id="confirm-text">ここに建設しますか？</div>
+  <button class="btn btn-green" id="btn-confirm-exec" onclick="executePendingAction()">✅ 建設する</button>
+  <button class="btn btn-dark" onclick="cancelPendingAction()">✖ キャンセル</button>
+</div>
+
+<!-- ドロワーパネル -->
+<div class="drawer" id="main-drawer">
+  <div class="drawer-hdr">
+    <span id="drawer-title">建設・開発メニュー</span>
+    <button class="btn btn-sm btn-dark" onclick="closeDrawer()">▼ 閉じる</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</div>
+
+<!-- 下部ドック（A列車コマンドバー） -->
+<div class="bottom-dock">
+  <button class="dock-btn active" onclick="openDrawer('rail', this)">🛤️<span>鉄道・施設</span></button>
+  <button class="dock-btn" onclick="openDrawer('sub', this)">🏢<span>子会社・名所</span></button>
+  <button class="dock-btn" onclick="openDrawer('train', this)">🚆<span>車両・ダイヤ</span></button>
+  <button class="dock-btn" onclick="openDrawer('city', this)">📍<span>拠点・情報</span></button>
+  <button class="dock-btn" onclick="openDrawer('goal', this)">📊<span>経営・100h</span></button>
+</div>
+
+<script type="module">
+import * as THREE from "three/webgpu";
+import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
+
+// =========================================================================
+// リアルスケール・設定 (1マス = 20m, 40x40 = 800m四方)
+// =========================================================================
+const MAP_W = 40, MAP_H = 40, TILE = 20, CHUNK_SIZE = 8;
+const CHUNK_COUNT_X = MAP_W / CHUNK_SIZE, CHUNK_COUNT_Y = MAP_H / CHUNK_SIZE;
+
+const isMobile = window.innerWidth <= 900 || ('ontouchstart' in window);
+let ecoFps = 30; // スマホ発熱防止のためデフォルト30fps（60fpsへ切替可）
+let shadowsEnabled = false; // デフォルトは超軽量な接地影(Fake AO)で発熱ゼロ！
+
+const TOOLS = [
+  { id: 'inspect', name: '🔍 調査・確認', costText: 'マス情報を見る' },
+  { id: 'rail', name: '🛤️ 地上線路(2点敷設)', costText: '500万円 / マス' },
+  { id: 'highrail', name: '🌉 高架・鉄橋(2点)', costText: '2,500万円 (水上可)' },
+  { id: 'station', name: '🚉 駅を建設', costText: '3,000万円' },
+  { id: 'upstation', name: '🏛️ 駅グレードUP', costText: '1億〜100億円' },
+  { id: 'factory', name: '🏭 資材工場', costText: '8,000万円' },
+  { id: 'depot', name: '📦 資材置場', costText: '2,000万円' },
+  { id: 'road', name: '🛣️ 道路(踏切自動)', costText: '200万円' },
+  { id: 'bulldoze', name: '🧨 撤去・解体', costText: '100万円' }
+];
+
+const SUBSIDIARIES = [
+  { id: 'conv', name: '🏪 駅前コンビニ', cost: 2500, income: 35, popAdd: 80, h: 3.4 },
+  { id: 'ryokan', name: '♨️ 飯坂温泉旅館', cost: 9000, income: 140, popAdd: 360, h: 6.5 },
+  { id: 'hotel', name: '🏨 高層シティホテル', cost: 32000, income: 480, popAdd: 1300, h: 24 },
+  { id: 'aeon', name: '🏬 超大型モール', cost: 120000, income: 2100, popAdd: 5500, h: 12 },
+  { id: 'castle', name: '🏯 会津・鶴ヶ城', cost: 350000, income: 5200, popAdd: 18000, h: 22 },
+  { id: 'hawaiians', name: '🌺 ハワイアンズ特区', cost: 1200000, income: 18000, popAdd: 55000, h: 15 },
+  { id: 'tower', name: '🏙️ 超高層タワマン', cost: 650000, income: 9800, popAdd: 32000, h: 52 },
+  { id: 'megatower', name: '🗼 ネオ福島タワー', cost: 25000000, income: 480000, popAdd: 950000, h: 105 }
+];
+
+const TRAIN_CATALOG = [
+  { id: 'local', name: '701系・E721系 (4両)', type: 'pass', speed: 0.65, cap: 160, cost: 4000, col: '#4ade80', bodyCol: '#cbd5e1', stripeCol: '#15803d', noseType: 'flat', cars: 4 },
+  { id: 'sl', name: 'C57 SLばんえつ物語', type: 'pass', speed: 0.48, cap: 240, cost: 12000, col: '#fbbf24', bodyCol: '#18181b', stripeCol: '#b45309', noseType: 'steam', cars: 4 },
+  { id: 'freight', name: 'EH500金太郎 貨物', type: 'cargo', speed: 0.55, cap: 28, cost: 5500, col: '#38bdf8', bodyCol: '#991b1b', stripeCol: '#d97706', noseType: 'loco', cars: 4 },
+  { id: 'express', name: 'E657系 特急ひたち', type: 'pass', speed: 1.05, cap: 520, cost: 35000, col: '#f472b6', bodyCol: '#e2e8f0', stripeCol: '#be185d', noseType: 'slant', cars: 4 },
+  { id: 'supercargo', name: 'M250 スーパー貨物', type: 'cargo', speed: 1.0, cap: 120, cost: 90000, col: '#60a5fa', bodyCol: '#1e3a8a', stripeCol: '#38bdf8', noseType: 'slant', cars: 4 },
+  { id: 'shinkansen', name: 'E5系 はやぶさ新幹線', type: 'pass', speed: 2.0, cap: 2600, cost: 500000, col: '#34d399', bodyCol: '#047857', stripeCol: '#ec4899', noseType: 'bullet', cars: 4 },
+  { id: 'linear', name: '超電導リニア L0系', type: 'pass', speed: 3.6, cap: 14000, cost: 12000000, col: '#fde047', bodyCol: '#f1f5f9', stripeCol: '#1d4ed8', noseType: 'bullet', cars: 4 }
+];
+
+const STATION_NAMES = ["福島中央","南福島","郡山","安積永盛","須賀川","新白河","いわき","湯本","小名浜","会津若松","喜多方","猪苗代","二本松","本宮","原ノ町","相馬","飯坂温泉","三春","只見","新福島"];
+
+let G = {
+  playTime: 0, simMinutes: 8 * 60, day: 1,
+  money: 35000, loan: 0, pop: 180000,
+  prestigeMult: 1.0, prestigeCount: 0,
+  map: [], trains: [], nextTrainUid: 1,
+  stationCount: 0, totalDeliveredMat: 0, totalPassengers: 0,
+  neighborsConnected: { south: false, north: false, west: false }
+};
+
+let simSpeed = 1, currentTool = 'rail', pendingTrainCat = null;
+let rideTrainId = null, walkMode = false, activeDrawer = null;
+let keysDown = {};
+
+// ★ A列車オービットカメラ＆建設プレビュー状態 ★
+let orbit = { tx: 20 * TILE, tz: 12 * TILE, dist: 95, yaw: 0.65, pitch: 0.62 };
+let walkCam = { x: 20 * TILE, z: 12 * TILE, yaw: Math.PI, pitch: 0.02 };
+let railAnchor = null;     // 線路2点敷設の始点 {x, y}
+let pendingTarget = null;  // 確定待ちターゲット {x, y}
+let previewRoute = [];     // プレビュー中の経路 [{x, y}]
+
+// =========================================================================
+// リアルアースカラー＆高精細テクスチャ（脱プラレール！）
+// =========================================================================
+const TEX = {}, MAT = {}, GEO = {};
+
+function makeCanvasTex(w, h, drawFn, rx = 1, ry = 1) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  drawFn(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(rx, ry);
+  return t;
+}
+
+function makeTrainSideTex(cat) {
+  return makeCanvasTex(256, 64, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, cat.bodyCol); g.addColorStop(0.55, cat.bodyCol); g.addColorStop(1, '#64748b');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.fillStyle = cat.stripeCol; c.fillRect(0, h * 0.58, w, h * 0.12);
+
+    if (cat.noseType === 'loco') {
+      c.fillStyle = 'rgba(0,0,0,0.45)';
+      for (let x = 28; x < 226; x += 14) c.fillRect(x, 14, 7, 24);
+      c.fillStyle = '#fde68a'; c.font = 'bold 11px sans-serif'; c.fillText('JRF EH500', 84, 44);
+    } else if (cat.noseType === 'steam') {
+      c.fillStyle = '#3f200d'; c.fillRect(0, 0, w, h);
+      c.fillStyle = '#b45309'; c.fillRect(0, h * 0.65, w, 4);
+      for (let wx = 18; wx < 238; wx += 26) {
+        c.fillStyle = '#fef3c7'; c.fillRect(wx, 14, 15, 22);
+        c.strokeStyle = '#5c3317'; c.lineWidth = 2; c.strokeRect(wx, 14, 15, 22);
+      }
+    } else {
+      [20, 114, 208].forEach(dx => {
+        c.fillStyle = '#64748b'; c.fillRect(dx, 10, 22, h - 12);
+        c.fillStyle = '#0f172a'; c.fillRect(dx + 3, 14, 6, 22); c.fillRect(dx + 12, 14, 6, 22);
+      });
+      [50, 72, 144, 166, 186].forEach(wx => {
+        c.fillStyle = '#1e293b'; c.fillRect(wx, 14, 16, 18);
+        c.fillStyle = 'rgba(148,163,184,0.35)'; c.fillRect(wx + 1, 15, 14, 7);
+      });
+    }
+  });
+}
+
+function initAssets() {
+  // くすんだ自然な日本の山林・草地テクスチャ
+  TEX.grass = makeCanvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#4a5a38'; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1200; i++) {
+      c.fillStyle = i % 3 === 0 ? '#3f4e2f' : i % 3 === 1 ? '#576843' : '#5e5a3c';
+      c.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+    }
+  }, 20, 20);
+
+  TEX.ballast = makeCanvasTex(64, 64, (c, w, h) => {
+    c.fillStyle = '#57534e'; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 400; i++) {
+      const v = 65 + Math.floor(Math.random() * 45);
+      c.fillStyle = `rgb(${v},${v-2},${v-5})`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+    }
+  });
+
+  TEX.road = makeCanvasTex(64, 64, (c, w, h) => {
+    c.fillStyle = '#2d3138'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#6b7280'; c.fillRect(0, 0, 5, h); c.fillRect(w - 5, 0, 5, h);
+    c.fillStyle = '#d1d5db'; for (let y = 4; y < h; y += 16) c.fillRect(w / 2 - 1, y, 2, 8);
+  });
+
+  // リアルな日本の水田テクスチャ（土あぜ道＋暗い水鏡と稲の畝）
+  TEX.paddy = makeCanvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#6b5b45'; c.fillRect(0, 0, w, h); // 土あぜ道
+    c.fillStyle = '#2e4a3d'; c.fillRect(6, 6, w - 12, h - 12); // 暗い水鏡
+    c.fillStyle = '#4d6637';
+    for (let y = 10; y < h - 10; y += 6) {
+      c.fillRect(10, y, w - 20, 2); // 稲の列
+    }
+  });
+
+  const drawWin = (c, w, h, base, win, ch) => {
+    c.fillStyle = base; c.fillRect(0, 0, w, h);
+    const cw = w / 8, rh = h / 16;
+    for (let r = 0; r < 16; r++) for (let col = 0; col < 8; col++) {
+      c.fillStyle = Math.random() < ch ? win : '#111827';
+      c.fillRect(col * cw + 2, r * rh + 2, cw - 4, rh - 4);
+    }
+  };
+  TEX.winOffice = makeCanvasTex(128, 256, (c, w, h) => drawWin(c, w, h, '#6b7280', '#93c5fd', 0.35));
+  TEX.winBrick = makeCanvasTex(128, 256, (c, w, h) => drawWin(c, w, h, '#784b38', '#fde68a', 0.42));
+  TEX.winGlass = makeCanvasTex(128, 256, (c, w, h) => drawWin(c, w, h, '#334155', '#bae6fd', 0.55));
+  TEX.winEmissive = makeCanvasTex(128, 256, (c, w, h) => drawWin(c, w, h, '#000', '#fef08a', 0.48));
+  TEX.winCyberEmissive = makeCanvasTex(128, 256, (c, w, h) => drawWin(c, w, h, '#000', '#7dd3fc', 0.62));
+
+  TEX.container = makeCanvasTex(64, 32, (c, w, h) => {
+    c.fillStyle = '#1e40af'; c.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 4) { c.fillStyle = 'rgba(0,0,0,0.28)'; c.fillRect(x, 0, 1, h); }
+    c.fillStyle = '#e2e8f0'; c.font = 'bold 8px sans-serif'; c.fillText('JRF', 8, 20);
+  });
+
+  TEX.convSign = makeCanvasTex(128, 32, (c, w, h) => {
+    c.fillStyle = '#e2e8f0'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#ea580c'; c.fillRect(0, 0, w, 7); c.fillStyle = '#15803d'; c.fillRect(0, 8, w, 5);
+    c.fillStyle = '#0f172a'; c.font = 'bold 11px sans-serif'; c.fillText('24H MART', 32, 28);
+  });
+  TEX.aeonSign = makeCanvasTex(128, 64, (c, w, h) => {
+    c.fillStyle = '#9d174d'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#f8fafc'; c.font = 'bold 22px sans-serif'; c.fillText('AEON', 32, 34);
+    c.font = 'bold 10px sans-serif'; c.fillText('FUKUSHIMA', 30, 52);
+  });
+  TEX.heliPad = makeCanvasTex(64, 64, (c, w, h) => {
+    c.fillStyle = '#374151'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = '#d97706'; c.lineWidth = 4; c.beginPath(); c.arc(32, 32, 24, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = '#e5e7eb'; c.font = 'bold 28px sans-serif'; c.fillText('H', 22, 42);
+  });
+
+  // マテリアル群（低彩度リアル志向）
+  MAT.ballast = new THREE.MeshLambertMaterial({ map: TEX.ballast });
+  MAT.railSteel = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.85, roughness: 0.28 });
+  MAT.tie = new THREE.MeshLambertMaterial({ color: 0x3b322c });
+  MAT.concrete = new THREE.MeshLambertMaterial({ color: 0x787e87 });
+  MAT.steel = new THREE.MeshLambertMaterial({ color: 0x4b5563 });
+  MAT.asphalt = new THREE.MeshLambertMaterial({ color: 0x2a2e35 });
+  MAT.contactAO = new THREE.MeshBasicMaterial({ color: 0x05080f, transparent: true, opacity: 0.35, depthWrite: false });
+  MAT.road = new THREE.MeshLambertMaterial({ map: TEX.road });
+  MAT.paddy = new THREE.MeshLambertMaterial({ map: TEX.paddy });
+  MAT.glass = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.85, roughness: 0.15 });
+  MAT.glassBlue = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.75, roughness: 0.2, transparent: true, opacity: 0.72 });
+  MAT.leafDark = new THREE.MeshLambertMaterial({ color: 0x2d4a22 });
+  MAT.leafMid = new THREE.MeshLambertMaterial({ color: 0x3e5c2c });
+  MAT.trunk = new THREE.MeshLambertMaterial({ color: 0x3b2a1e });
+  MAT.redLight = new THREE.MeshBasicMaterial({ color: 0xdc2626 });
+  MAT.yellowBar = new THREE.MeshLambertMaterial({ color: 0xca8a04 });
+  MAT.wheel = new THREE.MeshLambertMaterial({ color: 0x1f2937 });
+  MAT.bellow = new THREE.MeshLambertMaterial({ color: 0x111827 });
+  MAT.houseWall = new THREE.MeshLambertMaterial({ color: 0xd6d3cd });
+  MAT.houseWall2 = new THREE.MeshLambertMaterial({ color: 0xc2b8a3 });
+  MAT.roofTile = new THREE.MeshLambertMaterial({ color: 0x374151 });
+  MAT.roofBrown = new THREE.MeshLambertMaterial({ color: 0x5c3a28 });
+  MAT.castleWall = new THREE.MeshLambertMaterial({ color: 0xe5e7eb });
+  MAT.castleRoof = new THREE.MeshLambertMaterial({ color: 0x1e293b });
+  MAT.factoryWall = new THREE.MeshLambertMaterial({ color: 0x64748b });
+  MAT.chimneyRed = new THREE.MeshLambertMaterial({ color: 0xb91c1c });
+  MAT.container = new THREE.MeshLambertMaterial({ map: TEX.container });
+  MAT.woodShop = new THREE.MeshLambertMaterial({ color: 0x5c3c24 });
+  MAT.convSign = new THREE.MeshBasicMaterial({ map: TEX.convSign });
+  MAT.aeonSign = new THREE.MeshBasicMaterial({ map: TEX.aeonSign });
+  MAT.heliPad = new THREE.MeshLambertMaterial({ map: TEX.heliPad });
+
+  MAT.bldgOffice = new THREE.MeshStandardMaterial({ map: TEX.winOffice, emissiveMap: TEX.winEmissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.4 });
+  MAT.bldgBrick = new THREE.MeshStandardMaterial({ map: TEX.winBrick, emissiveMap: TEX.winEmissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.6 });
+  MAT.bldgGlass = new THREE.MeshStandardMaterial({ map: TEX.winGlass, emissiveMap: TEX.winCyberEmissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.2, metalness: 0.6 });
+  MAT.headlightCone = new THREE.MeshBasicMaterial({ color: 0xfef3c7, transparent: true, opacity: 0.2, depthWrite: false });
+  MAT.smoke = new THREE.MeshBasicMaterial({ color: 0x9ca3af, transparent: true, opacity: 0.4 });
+
+  // 共有ベースジオメトリ（バラスト用4角錐台・Icosahedron樹木など）
+  GEO.unitBox = new THREE.BoxGeometry(1, 1, 1);
+  GEO.unitCyl = new THREE.CylinderGeometry(1, 1, 1, 6);
+  GEO.trapezoid = new THREE.CylinderGeometry(0.75, 1.0, 1, 4); // 台形盛土用
+  GEO.treeCrown = new THREE.IcosahedronGeometry(1, 0); // 自然な丸み樹冠
+  GEO.unitCone = new THREE.ConeGeometry(1, 1, 4);
+  GEO.unitPlane = new THREE.PlaneGeometry(1, 1);
+  GEO.unitHalfCyl = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false, 0, Math.PI);
+}
+
+// =========================================================================
+// WebGPURenderer セットアップ
+// =========================================================================
+let scene, camera, renderer, sunLight, waterMesh, terrainGroup, cursorMesh, previewGroup;
+let chunkGroups = [], dirtyChunks = new Set(), trainMeshes = {}, roadCars = [];
+
+async function initRenderer() {
+  const container = document.getElementById('webgl-container');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9ec5d6);
+  scene.fog = new THREE.FogExp2(0x9ec5d6, 0.0016);
+
+  camera = new THREE.PerspectiveCamera(52, container.clientWidth / container.clientHeight, 0.5, 850);
+  renderer = new THREE.WebGPURenderer({ antialias: false, powerPreference: "low-power" });
+  await renderer.init();
+
+  // モバイルはDPR 1.0固定でGPU負荷・発熱を最小化！
+  renderer.setPixelRatio(isMobile ? 1.0 : Math.min(window.devicePixelRatio, 1.25));
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.shadowMap.enabled = shadowsEnabled;
+  renderer.shadowMap.type = THREE.BasicShadowMap;
+  container.appendChild(renderer.domElement);
+
+  const isWebGPU = renderer.backend && renderer.backend.isWebGPUBackend;
+  const badge = document.getElementById('gpu-badge');
+  badge.textContent = isWebGPU ? "⚡WebGPU" : "🛡️WebGL2";
+  if (!isWebGPU) { badge.style.background = "#1e3a8a"; badge.style.color = "#93c5fd"; }
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.52));
+  scene.add(new THREE.HemisphereLight(0xdbeafe, 0x262930, 0.48));
+
+  sunLight = new THREE.DirectionalLight(0xfffbeb, 1.2);
+  sunLight.castShadow = shadowsEnabled;
+  sunLight.shadow.mapSize.width = 1024; sunLight.shadow.mapSize.height = 1024;
+  sunLight.shadow.camera.near = 20; sunLight.shadow.camera.far = 450;
+  const d = 150;
+  sunLight.shadow.camera.left = -d; sunLight.shadow.camera.right = d;
+  sunLight.shadow.camera.top = d; sunLight.shadow.camera.bottom = -d;
+  scene.add(sunLight); scene.add(sunLight.target);
+
+  // 選択カーソル＆2点ルートプレビューグループ
+  cursorMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(TILE * 0.96, 0.6, TILE * 0.96),
+    new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.45 })
+  );
+  cursorMesh.visible = false;
+  scene.add(cursorMesh);
+
+  previewGroup = new THREE.Group();
+  scene.add(previewGroup);
+
+  const onResize = () => {
+    if (!container.clientWidth || !container.clientHeight) return;
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+  };
+  window.addEventListener('resize', onResize);
+  new ResizeObserver(onResize).observe(container);
+}
+
+function buildTerrainMesh() {
+  if (terrainGroup) scene.remove(terrainGroup);
+  terrainGroup = new THREE.Group();
+  const totalW = MAP_W * TILE, totalH = MAP_H * TILE;
+  const geo = new THREE.PlaneGeometry(totalW, totalH, MAP_W, MAP_H);
+  geo.rotateX(-Math.PI / 2);
+
+  const pos = geo.attributes.position, colors = [];
+  for (let i = 0; i < pos.count; i++) {
+    const wx = pos.getX(i) + totalW * 0.5, wz = pos.getZ(i) + totalH * 0.5;
+    pos.setX(i, wx); pos.setZ(i, wz);
+    const gx = Math.min(MAP_W - 1, Math.max(0, Math.floor(wx / TILE)));
+    const gy = Math.min(MAP_H - 1, Math.max(0, Math.floor(wz / TILE)));
+    const t = G.map[gy][gx];
+    let h = 0, col = new THREE.Color(0x6b7752);
+    if (t.terrain === 1) { h = -3.6; col.setHex(0x6e6658); }
+    else if (t.terrain === 2) {
+      h = 12 + Math.abs(Math.sin(wx * 0.05) * Math.cos(wz * 0.05) * 20);
+      col.setHex(h > 24 ? 0x575d66 : 0x3b4d2b);
+    } else if (t.station || t.building || t.road || t.factory || t.depot) {
+      h = 0.04; col.setHex(0x4b515a);
+    }
+    pos.setY(i, h); colors.push(col.r, col.g, col.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const tMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: TEX.grass, vertexColors: true }));
+  tMesh.receiveShadow = true; terrainGroup.add(tMesh);
+
+  const wGeo = new THREE.PlaneGeometry(totalW + 40, totalH + 40); wGeo.rotateX(-Math.PI / 2);
+  waterMesh = new THREE.Mesh(wGeo, new THREE.MeshLambertMaterial({ color: 0x1b4965, transparent: true, opacity: 0.88 }));
+  waterMesh.position.set(totalW * 0.5, -1.4, totalH * 0.5);
+  terrainGroup.add(waterMesh);
+  scene.add(terrainGroup);
+}
+
+// =========================================================================
+// 実物準拠スリム軌道＆ジオラマチャンクビルダー
+// =========================================================================
+const _m4 = new THREE.Matrix4(), _pos = new THREE.Vector3(), _quat = new THREE.Quaternion(), _scl = new THREE.Vector3(), _euler = new THREE.Euler();
+
+function pushGeo(buckets, matKey, baseGeo, x, y, z, rx, ry, rz, sx, sy, sz) {
+  if (!buckets[matKey]) buckets[matKey] = [];
+  const g = baseGeo.clone();
+  _euler.set(rx, ry, rz); _quat.setFromEuler(_euler);
+  _pos.set(x, y, z); _scl.set(sx, sy, sz);
+  _m4.compose(_pos, _quat, _scl); g.applyMatrix4(_m4);
+  buckets[matKey].push(g);
+}
+
+function addRailCurveToBuckets(buckets, cx, cz, inEdge, outEdge, ry, isHigh) {
+  const H = TILE * 0.5, edgePts = [[0, -H], [H, 0], [0, H], [-H, 0]];
+  const p0 = edgePts[inEdge], p1 = edgePts[outEdge];
+  const ccx = p0[0] + p1[0], ccz = p0[1] + p1[1];
+  const v0x = p0[0] - ccx, v0z = p0[1] - ccz, v1x = p1[0] - ccx, v1z = p1[1] - ccz;
+  const SEGS = 10;
+  for (let i = 0; i < SEGS; i++) {
+    const t0 = i / SEGS, t1 = (i + 1) / SEGS;
+    const a0 = t0 * Math.PI * 0.5, a1 = t1 * Math.PI * 0.5;
+    const x0 = ccx + v0x * Math.cos(a0) + v1x * Math.sin(a0), z0 = ccz + v0z * Math.cos(a0) + v1z * Math.sin(a0);
+    const x1 = ccx + v0x * Math.cos(a1) + v1x * Math.sin(a1), z1 = ccz + v0z * Math.cos(a1) + v1z * Math.sin(a1);
+    const xm = cx + (x0 + x1) * 0.5, zm = cz + (z0 + z1) * 0.5;
+    const segLen = Math.hypot(x1 - x0, z1 - z0) + 0.08, ang = Math.atan2(x1 - x0, z1 - z0);
+
+    // スリムな実物比率バラスト＋枕木＋細いレール
+    pushGeo(buckets, 'ballast', GEO.unitBox, xm, ry, zm, 0, ang, 0, 2.1, 0.16, segLen);
+    if (isHigh) pushGeo(buckets, 'concrete', GEO.unitBox, xm, ry - 0.32, zm, 0, ang, 0, 3.0, 0.55, segLen);
+    pushGeo(buckets, 'tie', GEO.unitBox, xm, ry + 0.09, zm, 0, ang, 0, 1.65, 0.06, 0.22);
+    const nx = Math.cos(ang), nz = -Math.sin(ang);
+    pushGeo(buckets, 'railSteel', GEO.unitBox, xm - nx * 0.55, ry + 0.15, zm - nz * 0.55, 0, ang, 0, 0.07, 0.1, segLen + 0.04);
+    pushGeo(buckets, 'railSteel', GEO.unitBox, xm + nx * 0.55, ry + 0.15, zm + nz * 0.55, 0, ang, 0, 0.07, 0.1, segLen + 0.04);
+  }
+}
+
+function addRailStraightToBuckets(buckets, cx, cz, rotY, len, ry, isHigh, offsetZ = 0) {
+  const ox = cx + Math.sin(rotY) * offsetZ, oz = cz + Math.cos(rotY) * offsetZ;
+  pushGeo(buckets, 'ballast', GEO.unitBox, ox, ry, oz, 0, rotY, 0, 2.1, 0.16, len);
+  if (isHigh) {
+    pushGeo(buckets, 'concrete', GEO.unitBox, ox, ry - 0.32, oz, 0, rotY, 0, 3.0, 0.55, len);
+    const nx = Math.cos(rotY), nz = -Math.sin(rotY);
+    pushGeo(buckets, 'concrete', GEO.unitBox, ox - nx * 1.45, ry + 0.2, oz - nz * 1.45, 0, rotY, 0, 0.18, 0.65, len);
+    pushGeo(buckets, 'concrete', GEO.unitBox, ox + nx * 1.45, ry + 0.2, oz + nz * 1.45, 0, rotY, 0, 0.18, 0.65, len);
+  }
+  const count = Math.max(2, Math.floor(len / 1.1));
+  for (let i = 0; i < count; i++) {
+    const lz = -len * 0.5 + (i + 0.5) * (len / count);
+    pushGeo(buckets, 'tie', GEO.unitBox, ox + Math.sin(rotY) * lz, ry + 0.09, oz + Math.cos(rotY) * lz, 0, rotY, 0, 1.65, 0.06, 0.22);
+  }
+  const nx = Math.cos(rotY), nz = -Math.sin(rotY);
+  pushGeo(buckets, 'railSteel', GEO.unitBox, ox - nx * 0.55, ry + 0.15, oz - nz * 0.55, 0, rotY, 0, 0.07, 0.1, len);
+  pushGeo(buckets, 'railSteel', GEO.unitBox, ox + nx * 0.55, ry + 0.15, oz + nz * 0.55, 0, rotY, 0, 0.07, 0.1, len);
+}
+
+function markTileDirty(gx, gy) {
+  const cx = Math.floor(gx / CHUNK_SIZE), cy = Math.floor(gy / CHUNK_SIZE);
+  if (cx >= 0 && cx < CHUNK_COUNT_X && cy >= 0 && cy < CHUNK_COUNT_Y) dirtyChunks.add(`${cx},${cy}`);
+}
+
+function rebuildChunk(chunkX, chunkY) {
+  if (!chunkGroups[chunkY]) chunkGroups[chunkY] = [];
+  if (chunkGroups[chunkY][chunkX]) {
+    chunkGroups[chunkY][chunkX].children.forEach(m => m.geometry.dispose());
+    scene.remove(chunkGroups[chunkY][chunkX]);
+  }
+  const group = new THREE.Group(), buckets = {};
+  const startX = chunkX * CHUNK_SIZE, startY = chunkY * CHUNK_SIZE;
+
+  for (let gy = startY; gy < startY + CHUNK_SIZE; gy++) {
+    for (let gx = startX; gx < startX + CHUNK_SIZE; gx++) {
+      const tile = G.map[gy][gx];
+      const cx = gx * TILE + TILE * 0.5, cz = gy * TILE + TILE * 0.5;
+      const ry = tile.high ? 4.4 : 0.12;
+
+      // リアルな田んぼ＆自然な広葉樹林（プラレール円錐ツリー撤廃！）
+      if (tile.terrain === 0 && !tile.rail && !tile.station && !tile.building && !tile.factory && !tile.depot && !tile.road) {
+        const h = (gx * 37 + gy * 17) % 8;
+        if (h === 0 || h === 1 || h === 2) {
+          pushGeo(buckets, 'paddy', GEO.unitPlane, cx, 0.06, cz, -Math.PI / 2, 0, 0, TILE * 0.96, TILE * 0.96, 1);
+        } else if (h === 3) {
+          // 雑木林クラスター
+          [[-4,-3,1.1],[3,4,1.3],[-2,5,0.9]].forEach(([tx, tz, ts], i) => {
+            pushGeo(buckets, 'trunk', GEO.unitCyl, cx + tx, 0.9 * ts, cz + tz, 0, 0, 0, 0.18 * ts, 1.8 * ts, 0.18 * ts);
+            pushGeo(buckets, i % 2 === 0 ? 'leafDark' : 'leafMid', GEO.treeCrown, cx + tx, 2.3 * ts, cz + tz, 0, tx, 0, 1.4 * ts, 1.3 * ts, 1.4 * ts);
+          });
+        }
+      } else if (tile.terrain === 2 && (gx + gy) % 2 === 0) {
+        pushGeo(buckets, 'leafDark', GEO.treeCrown, cx, 1.8, cz, 0, gx, 0, 2.1, 1.9, 2.1);
+      }
+
+      // 道路＆踏切
+      if (tile.road) {
+        if (!tile.rail || !tile.high) pushGeo(buckets, 'road', GEO.unitPlane, cx, 0.08, cz, -Math.PI / 2, 0, 0, TILE * 0.34, TILE, 1);
+        if (tile.rail && !tile.high) {
+          [-2.0, 2.0].forEach(fx => {
+            pushGeo(buckets, 'yellowBar', GEO.unitBox, cx + fx, 1.2, cz - 2.0, 0, 0, 0, 0.15, 2.4, 0.15);
+            pushGeo(buckets, 'redLight', GEO.unitBox, cx + fx, 2.1, cz - 2.0, 0, 0, 0, 0.4, 0.22, 0.22);
+            pushGeo(buckets, 'yellowBar', GEO.unitBox, cx, 0.85, cz + (fx > 0 ? 1.9 : -1.9), 0, 0, 0, 3.4, 0.09, 0.09);
+          });
+        }
+      }
+
+      // スリム軌道＆60mおき架線柱
+      if (tile.rail) {
+        if (tile.high && (gx + gy) % 2 === 0) pushGeo(buckets, 'concrete', GEO.unitCyl, cx, (ry - 3) * 0.5, cz, 0, 0, 0, 0.65, ry + 3, 0.65);
+        const m = tile.rail;
+        let drawn = false;
+        if ((m & 1) && (m & 4)) { addRailStraightToBuckets(buckets, cx, cz, 0, TILE, ry, tile.high); drawn = true; }
+        if ((m & 2) && (m & 8)) { addRailStraightToBuckets(buckets, cx, cz, Math.PI / 2, TILE, ry, tile.high); drawn = true; }
+        if ((m & 1) && (m & 2)) { addRailCurveToBuckets(buckets, cx, cz, 0, 1, ry, tile.high); drawn = true; }
+        if ((m & 2) && (m & 4)) { addRailCurveToBuckets(buckets, cx, cz, 1, 2, ry, tile.high); drawn = true; }
+        if ((m & 4) && (m & 8)) { addRailCurveToBuckets(buckets, cx, cz, 2, 3, ry, tile.high); drawn = true; }
+        if ((m & 8) && (m & 1)) { addRailCurveToBuckets(buckets, cx, cz, 3, 0, ry, tile.high); drawn = true; }
+        if (!drawn) {
+          const rotMap = { 1: Math.PI, 2: Math.PI / 2, 4: 0, 8: -Math.PI / 2 };
+          const bit = [1, 2, 4, 8].find(b => m & b) || 4;
+          addRailStraightToBuckets(buckets, cx, cz, rotMap[bit], TILE * 0.55, ry, tile.high, TILE * 0.22);
+          pushGeo(buckets, 'redLight', GEO.unitBox, cx, ry + 0.4, cz, 0, rotMap[bit], 0, 1.5, 0.5, 0.35);
+        }
+        // 架線柱は3マスおき（リアル間隔）
+        if ((gx + gy) % 3 === 0 && !tile.station) {
+          pushGeo(buckets, 'steel', GEO.unitBox, cx - 1.7, ry + 2.0, cz, 0, 0, 0, 0.14, 4.0, 0.14);
+          pushGeo(buckets, 'steel', GEO.unitBox, cx + 1.7, ry + 2.0, cz, 0, 0, 0, 0.14, 4.0, 0.14);
+          pushGeo(buckets, 'steel', GEO.unitBox, cx, ry + 3.85, cz, 0, 0, 0, 3.6, 0.14, 0.14);
+        }
+      }
+
+      // 駅（アスファルトロータリー＋スリムホーム＋駅舎）
+      if (tile.station) {
+        const lv = tile.station.lv;
+        pushGeo(buckets, 'asphalt', GEO.unitPlane, cx, 0.05, cz, -Math.PI / 2, 0, 0, TILE * 0.96, TILE * 0.96, 1);
+        [-2.2, 2.2].forEach(hx => {
+          pushGeo(buckets, 'concrete', GEO.unitBox, cx + hx, ry + 0.5, cz, 0, 0, 0, 1.9, 1.0, TILE * 0.92);
+          pushGeo(buckets, 'steel', GEO.unitBox, cx + hx, ry + 2.7, cz, 0, 0, 0, 1.8, 0.14, TILE * 0.84);
+        });
+        if (lv >= 2) pushGeo(buckets, 'bldgOffice', GEO.unitBox, cx, ry + 4.1, cz, 0, 0, 0, 8.6, 2.6, 4.8);
+        if (lv >= 3) pushGeo(buckets, 'glassBlue', GEO.unitHalfCyl, cx, ry + 3.1, cz, 0, Math.PI / 2, Math.PI / 2, 4.4, TILE * 0.88, 4.4);
+        if (lv >= 4) {
+          pushGeo(buckets, 'bldgGlass', GEO.unitBox, cx - 5.6, 17, cz, 0, 0, 0, 4.6, 34, 12);
+          pushGeo(buckets, 'bldgGlass', GEO.unitBox, cx + 5.6, 17, cz, 0, 0, 0, 4.6, 34, 12);
+          pushGeo(buckets, 'heliPad', GEO.unitPlane, cx - 5.6, 34.1, cz, -Math.PI / 2, 0, 0, 4.2, 4.2, 1);
+        }
+      }
+
+      if (tile.factory) {
+        pushGeo(buckets, 'asphalt', GEO.unitPlane, cx, 0.05, cz, -Math.PI / 2, 0, 0, TILE * 0.95, TILE * 0.95, 1);
+        pushGeo(buckets, 'factoryWall', GEO.unitBox, cx - 1, 2.4, cz, 0, 0, 0, 11, 4.8, 12);
+        pushGeo(buckets, 'chimneyRed', GEO.unitCyl, cx + 4.8, 8.0, cz + 4.5, 0, 0, 0, 0.65, 10.0, 0.65);
+      }
+
+      if (tile.depot) {
+        pushGeo(buckets, 'concrete', GEO.unitBox, cx, 0.12, cz, 0, 0, 0, 15, 0.24, 15);
+        for (let i = 0; i < 4; i++) pushGeo(buckets, 'container', GEO.unitBox, cx - 4.8 + i * 3.2, 1.3, cz, 0, 0, 0, 2.3, 2.2, 6.2);
+      }
+
+      // リアルな建物群（全建物に接地影Fake AO＋アスファルト敷き＋複数軒クラスター！）
+      if (tile.building) {
+        const b = tile.building, seed = (gx * 13 + gy * 29) % 4;
+        pushGeo(buckets, 'asphalt', GEO.unitPlane, cx, 0.04, cz, -Math.PI / 2, 0, 0, TILE * 0.96, TILE * 0.96, 1);
+
+        if (b.owner === 'ai') {
+          if (b.lv === 1) {
+            // 実寸の日本住宅街（1マスに小ぶりな家3軒＋庭木！）
+            [[-4.2,-3.8,4.6,4.2],[4.2,-3.5,4.4,4.8],[0.5,4.2,5.4,4.2]].forEach(([hx, hz, hw, hd], i) => {
+              pushGeo(buckets, 'contactAO', GEO.unitPlane, cx + hx, 0.06, cz + hz, -Math.PI / 2, 0, 0, hw + 1.2, hd + 1.2, 1);
+              pushGeo(buckets, i % 2 === 0 ? 'houseWall' : 'houseWall2', GEO.unitBox, cx + hx, 1.3, cz + hz, 0, 0, 0, hw, 2.6, hd);
+              pushGeo(buckets, (seed + i) % 2 === 0 ? 'roofTile' : 'roofBrown', GEO.unitCone, cx + hx, 3.4, cz + hz, 0, Math.PI / 4, 0, hw * 0.78, 1.6, hd * 0.78);
+            });
+          } else {
+            const matKey = seed === 0 ? 'bldgOffice' : seed === 1 ? 'bldgBrick' : 'bldgGlass';
+            pushGeo(buckets, 'contactAO', GEO.unitPlane, cx, 0.06, cz, -Math.PI / 2, 0, 0, 14, 14, 1);
+            if (b.lv >= 4 && seed === 2) {
+              pushGeo(buckets, matKey, GEO.unitBox, cx, b.h * 0.35, cz, 0, 0, 0, 11.5, b.h * 0.7, 11.5);
+              pushGeo(buckets, matKey, GEO.unitBox, cx, b.h * 0.85, cz, 0, 0, 0, 8.0, b.h * 0.3, 8.0);
+              pushGeo(buckets, 'heliPad', GEO.unitPlane, cx, b.h + 0.1, cz, -Math.PI / 2, 0, 0, 7.2, 7.2, 1);
+            } else if (b.lv >= 4 && seed === 3) {
+              pushGeo(buckets, 'bldgGlass', GEO.unitCyl, cx - 2.8, b.h * 0.5, cz, 0, 0, 0, 4.0, b.h, 4.0);
+              pushGeo(buckets, 'bldgGlass', GEO.unitCyl, cx + 3.2, b.h * 0.4, cz + 2.5, 0, 0, 0, 3.0, b.h * 0.8, 3.0);
+            } else {
+              pushGeo(buckets, matKey, GEO.unitBox, cx, b.h * 0.5, cz, 0, 0, 0, 10.5, b.h, 10.5);
+              pushGeo(buckets, 'steel', GEO.unitBox, cx + 1.8, b.h + 1.0, cz - 1.8, 0, 0, 0, 3.4, 2.0, 3.4);
+            }
+          }
+        } else {
+          pushGeo(buckets, 'contactAO', GEO.unitPlane, cx, 0.06, cz, -Math.PI / 2, 0, 0, 15, 15, 1);
+          if (b.kind.includes('コンビニ')) {
+            pushGeo(buckets, 'houseWall', GEO.unitBox, cx, 1.6, cz - 2.5, 0, 0, 0, 9.5, 3.2, 6.0);
+            pushGeo(buckets, 'convSign', GEO.unitBox, cx, 3.1, cz + 0.6, 0, 0, 0, 9.6, 1.1, 0.3);
+          } else if (b.kind.includes('温泉旅館')) {
+            pushGeo(buckets, 'woodShop', GEO.unitBox, cx, 3.0, cz, 0, 0, 0, 13, 6.0, 11);
+            pushGeo(buckets, 'castleRoof', GEO.unitCone, cx, 7.6, cz, 0, Math.PI / 4, 0, 10.5, 3.2, 10.5);
+          } else if (b.kind.includes('鶴ヶ城')) {
+            pushGeo(buckets, 'concrete', GEO.unitBox, cx, 2.5, cz, 0, 0, 0, 14, 5.0, 14);
+            pushGeo(buckets, 'castleWall', GEO.unitBox, cx, 8.0, cz, 0, 0, 0, 9.5, 6.0, 9.5);
+            pushGeo(buckets, 'castleRoof', GEO.unitCone, cx, 12.2, cz, 0, Math.PI / 4, 0, 8.8, 2.8, 8.8);
+            pushGeo(buckets, 'castleWall', GEO.unitBox, cx, 15.0, cz, 0, 0, 0, 6.0, 4.5, 6.0);
+            pushGeo(buckets, 'castleRoof', GEO.unitCone, cx, 18.8, cz, 0, Math.PI / 4, 0, 5.8, 3.2, 5.8);
+          } else if (b.kind.includes('ハワイアンズ')) {
+            pushGeo(buckets, 'houseWall', GEO.unitCyl, cx, 3.5, cz, 0, 0, 0, 7.8, 7.0, 7.8);
+            pushGeo(buckets, 'glassBlue', GEO.unitHalfCyl, cx, 7.0, cz, 0, 0, Math.PI / 2, 7.6, 14, 7.6);
+          } else if (b.kind.includes('モール')) {
+            pushGeo(buckets, 'houseWall', GEO.unitBox, cx, 4.5, cz, 0, 0, 0, 15, 9.0, 14);
+            pushGeo(buckets, 'aeonSign', GEO.unitBox, cx - 5.0, 7.5, cz + 7.2, 0, 0, 0, 4.5, 15, 1.5);
+          } else if (b.kind.includes('ネオ福島タワー')) {
+            pushGeo(buckets, 'steel', GEO.unitCyl, cx, 30, cz, 0, 0, 0, 4.2, 60, 4.2);
+            pushGeo(buckets, 'bldgGlass', GEO.unitCyl, cx, 60, cz, 0, 0, 0, 5.8, 5.2, 5.8);
+            pushGeo(buckets, 'railSteel', GEO.unitCyl, cx, 82, cz, 0, 0, 0, 1.1, 40, 1.1);
+          } else {
+            pushGeo(buckets, 'bldgGlass', GEO.unitBox, cx, b.h * 0.5, cz, 0, 0, 0, 12, b.h, 12);
+            pushGeo(buckets, 'heliPad', GEO.unitPlane, cx, b.h + 0.1, cz, -Math.PI / 2, 0, 0, 9, 9, 1);
+          }
+        }
+      }
+    }
+  }
+
+  for (const [matKey, geos] of Object.entries(buckets)) {
+    if (!geos.length) continue;
+    try {
+      const merged = BufferGeometryUtils.mergeGeometries(geos, false);
+      geos.forEach(g => g.dispose());
+      if (merged) {
+        const mesh = new THREE.Mesh(merged, MAT[matKey]);
+        if (shadowsEnabled && matKey !== 'ballast' && matKey !== 'tie' && matKey !== 'road' && matKey !== 'railSteel' && matKey !== 'paddy' && matKey !== 'asphalt' && matKey !== 'contactAO') {
+          mesh.castShadow = true;
+        }
+        mesh.receiveShadow = true;
+        group.add(mesh);
+      }
+    } catch (e) {}
+  }
+  chunkGroups[chunkY][chunkX] = group;
+  scene.add(group);
+}
+
+// =========================================================================
+// スリム実車プロポーション車両 (幅1.25m × 長さ4.1m × 4両 = 17m → 駅にピッタリ)
+// =========================================================================
+function createDetailedCar(cat, carIdx) {
+  const car = new THREE.Group();
+  const isHead = carIdx === 0;
+  const len = 4.1, w = 1.25;
+
+  if (cat.noseType === 'steam') {
+    if (isHead) {
+      const black = new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.5, roughness: 0.4 });
+      const boiler = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 2.8, 12), black);
+      boiler.rotation.x = Math.PI / 2; boiler.position.set(0, 1.05, 0.45); car.add(boiler);
+      const cab = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.2, 1.05), black);
+      cab.position.set(0, 1.2, -1.35); car.add(cab);
+      const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.55, 8), black);
+      chimney.position.set(0, 1.68, 1.45); car.add(chimney);
+      [-0.5, 0.5].forEach(dx => {
+        const def = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.65, 0.7), black);
+        def.position.set(dx, 1.15, 1.45); car.add(def);
+      });
+      [-0.5, 0.15, 0.8].forEach(wz => [-0.52, 0.52].forEach(wx => {
+        const dw = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.08, 10), MAT.redLight);
+        dw.rotation.z = Math.PI / 2; dw.position.set(wx, 0.36, wz); car.add(dw);
+      }));
+    } else if (carIdx === 1) {
+      const tender = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.95, 2.6), MAT.wheel);
+      tender.position.y = 0.8; car.add(tender);
+    } else {
+      const sideMat = new THREE.MeshStandardMaterial({ map: makeTrainSideTex(cat), roughness: 0.5 });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(w, 1.05, len), [sideMat, sideMat, MAT.woodShop, MAT.wheel, MAT.woodShop, MAT.woodShop]);
+      body.position.y = 1.05; car.add(body);
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, len, 8, 1, false, 0, Math.PI), MAT.steel);
+      roof.rotation.z = Math.PI / 2; roof.rotation.y = Math.PI / 2; roof.scale.set(1, 0.32, 1); roof.position.y = 1.58; car.add(roof);
+    }
+    return car;
+  }
+
+  if (cat.type === 'cargo' && !isHead) {
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.15, len - 0.1), MAT.steel);
+    frame.position.y = 0.42; car.add(frame);
+    if (carIdx % 2 === 1) {
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, len - 0.4, 12), MAT.railSteel);
+      tank.rotation.x = Math.PI / 2; tank.position.y = 0.95; car.add(tank);
+    } else {
+      const cont = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.98, len - 0.35), MAT.container);
+      cont.position.y = 0.98; car.add(cont);
+    }
+    return car;
+  }
+
+  const sideTex = makeTrainSideTex(cat);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: cat.bodyCol, metalness: 0.6, roughness: 0.3 });
+  const sideMat = new THREE.MeshStandardMaterial({ map: sideTex, metalness: 0.45, roughness: 0.35 });
+
+  const mainLen = (isHead && cat.noseType === 'bullet') ? 2.6 : len;
+  const mainZ = (isHead && cat.noseType === 'bullet') ? -0.75 : 0;
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, 1.05, mainLen), [sideMat, sideMat, bodyMat, MAT.wheel, bodyMat, bodyMat]);
+  body.position.set(0, 1.05, mainZ); car.add(body);
+
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.51, w * 0.51, mainLen, 8, 1, false, 0, Math.PI), bodyMat);
+  roof.rotation.z = Math.PI / 2; roof.rotation.y = Math.PI / 2; roof.scale.set(1, 0.32, 1);
+  roof.position.set(0, 1.58, mainZ); car.add(roof);
+
+  [-1.2, 1.2].forEach(bz => {
+    const bogie = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.18, 0.8), MAT.steel);
+    bogie.position.set(0, 0.3, bz); car.add(bogie);
+  });
+
+  if (isHead) {
+    if (cat.noseType === 'bullet') {
+      const noseShape = new THREE.Shape();
+      noseShape.moveTo(0, 0); noseShape.lineTo(2.6, 0); noseShape.lineTo(2.6, 0.22);
+      noseShape.quadraticCurveTo(1.5, 0.95, 0, 1.15); noseShape.closePath();
+      const noseGeo = new THREE.ExtrudeGeometry(noseShape, { depth: w * 0.92, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06 });
+      noseGeo.center();
+      const nose = new THREE.Mesh(noseGeo, bodyMat);
+      nose.rotation.y = -Math.PI / 2; nose.position.set(0, 0.9, 1.55); car.add(nose);
+      const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.28, 0.7), MAT.glass);
+      canopy.rotation.x = 0.5; canopy.position.set(0, 1.44, 1.05); car.add(canopy);
+    } else {
+      const fw = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.45, 0.08), MAT.glass);
+      fw.position.set(0, 1.22, len * 0.5 + 0.02); car.add(fw);
+    }
+    [-0.36, 0.36].forEach(lx => {
+      const hl = new THREE.Mesh(new THREE.SphereGeometry(0.08), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+      hl.position.set(lx, 0.72, (cat.noseType === 'bullet' ? 2.7 : len * 0.5 + 0.04)); car.add(hl);
+    });
+  } else {
+    const bellow = new THREE.Mesh(new THREE.BoxGeometry(0.82, 1.05, 0.28), MAT.bellow);
+    bellow.position.set(0, 1.05, len * 0.5 + 0.14); car.add(bellow);
+  }
+  return car;
+}
+
+function getOrCreateTrainMesh(tr) {
+  if (trainMeshes[tr.id]) return trainMeshes[tr.id];
+  const cat = TRAIN_CATALOG.find(c => c.id === tr.catId);
+  const group = new THREE.Group(), cars = [];
+  for (let i = 0; i < cat.cars; i++) { const c = createDetailedCar(cat, i); cars.push(c); group.add(c); }
+  const coneGeo = new THREE.ConeGeometry(2.0, 12, 8, 1, true);
+  coneGeo.rotateX(-Math.PI / 2); coneGeo.translate(0, 0, 7.5);
+  const beam = new THREE.Mesh(coneGeo, MAT.headlightCone);
+  beam.position.set(0, 0.6, 1.0); beam.visible = false;
+  cars[0].add(beam);
+  scene.add(group);
+  trainMeshes[tr.id] = { group, cars, beam, isSteam: cat.noseType === 'steam' };
+  return trainMeshes[tr.id];
+}
+
+// =========================================================================
+// マップ・軌道物理・運行ロジック
+// =========================================================================
+function initMap() {
+  G.map = [];
+  for (let y = 0; y < MAP_H; y++) {
+    let row = [];
+    for (let x = 0; x < MAP_W; x++) {
+      let terrain = 0;
+      if (x >= 35 + Math.sin(y * 0.25) * 1.5) terrain = 1;
+      else if (Math.hypot(x - 13, y - 19.5) < 2.8) terrain = 1;
+      else if (Math.abs(x - (22 + Math.sin(y * 0.2) * 1.6)) < 0.75 && y > 3 && y < 37) terrain = 1;
+      else if (Math.hypot(x - 13, y - 13) < 3.0 || x < 3 || (x > 26 && x < 30 && y > 8 && y < 32 && (x + y) % 3 !== 0)) terrain = 2;
+      row.push({ x, y, terrain, rail: 0, high: false, road: false, station: null, factory: false, depot: false, building: null });
+    }
+    G.map.push(row);
+  }
+
+  const demoPts = [[20,10],[20,11],[20,12],[20,13],[20,14],[19,14],[18,14],[18,13],[18,12],[18,11],[18,10],[19,10]];
+  demoPts.forEach(([px, py]) => { G.map[py][px].rail = 15; G.map[py][px].high = false; });
+  G.map[10][20].station = { name: "福島中央駅", lv: 2, mat: 22, users: 0 };
+  G.map[14][18].station = { name: "南福島駅", lv: 1, mat: 12, users: 0 };
+  G.map[15][18].factory = true; G.map[15][19].depot = true;
+  G.map[11][19].road = true; G.map[11][20].road = true; G.map[11][21].road = true;
+  G.map[10][21].building = { kind: '民間ビル', lv: 3, h: 20, owner: 'ai', income: 12, pop: 2400 };
+  G.map[9][20].building = { kind: '民間住宅', lv: 1, h: 4, owner: 'ai', income: 4, pop: 500 };
+  G.stationCount = 2;
+  demoPts.forEach(([px, py]) => recalcRailConnections(px, py));
+
+  G.trains.push({
+    id: G.nextTrainUid++, catId: 'sl', gx: 20, gy: 12, dir: 2, inEdge: 0, outEdge: 2, prog: 0,
+    state: 'run', wait: 0, cargo: 0, pass: 40, branchMode: 'straight', schedule: 'all', toggleTurn: false,
+    name: 'SLばんえつ号', history: []
+  });
+}
+
+function recalcRailConnections(cx, cy) {
+  const dirs = [{ dx:0, dy:-1, bit:1, opp:4 }, { dx:1, dy:0, bit:2, opp:8 }, { dx:0, dy:1, bit:4, opp:1 }, { dx:-1, dy:0, bit:8, opp:2 }];
+  const t = G.map[cy][cx];
+  if (!t.rail && !t.station) return;
+  let mask = 0;
+  dirs.forEach(d => {
+    const nx = cx + d.dx, ny = cy + d.dy;
+    if (nx >= 0 && nx < MAP_W && ny >= 0 && ny < MAP_H) {
+      const nb = G.map[ny][nx];
+      if (nb.rail || nb.station) { mask |= d.bit; nb.rail |= d.opp; markTileDirty(nx, ny); }
+    }
+  });
+  t.rail = mask || 5; markTileDirty(cx, cy);
+}
+
+function getTrainArcPos(tr) {
+  const H = TILE * 0.5, edgePts = [[0, -H], [H, 0], [0, H], [-H, 0]];
+  const inE = tr.inEdge !== undefined ? tr.inEdge : (tr.dir + 2) % 4;
+  const outE = tr.outEdge !== undefined ? tr.outEdge : tr.dir;
+  const t = tr.prog, p0 = edgePts[inE], p1 = edgePts[outE];
+  let lx, lz, tx, tz;
+  if ((inE + 2) % 4 === outE) {
+    lx = p0[0] + (p1[0] - p0[0]) * t; lz = p0[1] + (p1[1] - p0[1]) * t; tx = p1[0] - p0[0]; tz = p1[1] - p0[1];
+  } else if (inE === outE) {
+    lx = p0[0] * Math.abs(1 - 2 * t); lz = p0[1] * Math.abs(1 - 2 * t); tx = t < 0.5 ? -p0[0] : p0[0]; tz = t < 0.5 ? -p0[1] : p0[1];
+  } else {
+    const cx = p0[0] + p1[0], cz = p0[1] + p1[1], v0x = p0[0] - cx, v0z = p0[1] - cz, v1x = p1[0] - cx, v1z = p1[1] - cz;
+    const ang = t * Math.PI * 0.5;
+    lx = cx + v0x * Math.cos(ang) + v1x * Math.sin(ang); lz = cz + v0z * Math.cos(ang) + v1z * Math.sin(ang);
+    tx = -v0x * Math.sin(ang) + v1x * Math.cos(ang); tz = -v0z * Math.sin(ang) + v1z * Math.cos(ang);
+  }
+  return { x: tr.gx * TILE + H + lx, z: tr.gy * TILE + H + lz, y: G.map[tr.gy][tr.gx].high ? 4.6 : 0.25, yaw: Math.atan2(tx, tz) };
+}
+
+function chooseExitEdge(tile, inEdge, tr) {
+  const dirBits = [1, 2, 4, 8], mask = tile.rail, straight = (inEdge + 2) % 4;
+  const left = (straight + 3) % 4, right = (straight + 1) % 4;
+  if (tr.branchMode === 'auto') {
+    const choices = [straight, left, right].filter(d => mask & dirBits[d]);
+    if (choices.length > 1) { tr.toggleTurn = !tr.toggleTurn; return choices[tr.toggleTurn ? 1 : 0]; }
+  }
+  if (tr.branchMode === 'left' && (mask & dirBits[left])) return left;
+  if (tr.branchMode === 'right' && (mask & dirBits[right])) return right;
+  if (mask & dirBits[straight]) return straight;
+  if (mask & dirBits[left]) return left;
+  if (mask & dirBits[right]) return right;
+  return inEdge;
+}
+
+const smokePool = [];
+function initSmokePool() {
+  for (let i = 0; i < 12; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.4, 5, 4), MAT.smoke);
+    m.visible = false; scene.add(m);
+    smokePool.push({ mesh: m, life: 0 });
+  }
+}
+
+function updateTrains(dt) {
+  const dVec = [[0,-1],[1,0],[0,1],[-1,0]], hr = (G.simMinutes % 1440) / 60, isNight = hr >= 18 || hr < 6;
+  G.trains.forEach(tr => {
+    if (tr.inEdge === undefined) { tr.inEdge = (tr.dir + 2) % 4; tr.outEdge = tr.dir; }
+    const cat = TRAIN_CATALOG.find(c => c.id === tr.catId);
+    const meshObj = getOrCreateTrainMesh(tr);
+    meshObj.beam.visible = isNight && tr.id !== rideTrainId;
+    const inService = tr.schedule !== 'day' || (hr >= 6 && hr < 23);
+
+    if (tr.state === 'wait') {
+      if (inService) tr.wait -= dt * simSpeed;
+      if (tr.wait <= 0 && inService) tr.state = 'run';
+    } else if (inService || !G.map[tr.gy][tr.gx].station) {
+      tr.prog += cat.speed * dt * simSpeed;
+      if (tr.prog >= 1.0) {
+        tr.prog -= 1.0; tr.dir = tr.outEdge;
+        tr.gx += dVec[tr.dir][0]; tr.gy += dVec[tr.dir][1];
+        if (tr.gx < 0 || tr.gx >= MAP_W || tr.gy < 0 || tr.gy >= MAP_H) {
+          tr.gx = Math.max(0, Math.min(MAP_W - 1, tr.gx)); tr.gy = Math.max(0, Math.min(MAP_H - 1, tr.gy));
+          tr.dir = (tr.dir + 2) % 4; tr.inEdge = (tr.dir + 2) % 4; tr.outEdge = tr.dir;
+          handleNeighborConnection(tr);
+        } else {
+          const tile = G.map[tr.gy][tr.gx];
+          tr.inEdge = (tr.dir + 2) % 4; tr.outEdge = chooseExitEdge(tile, tr.inEdge, tr);
+          if (tile.station) { onTrainArriveStation(tr, tile); tr.state = 'wait'; tr.wait = 1.4; }
+        }
+      }
+    }
+
+    const headPos = getTrainArcPos(tr);
+    if (!tr.history) tr.history = [];
+    const lastH = tr.history[0];
+    if (!lastH || Math.hypot(headPos.x - lastH.x, headPos.z - lastH.z) > 0.3) {
+      tr.history.unshift({ x: headPos.x, y: headPos.y, z: headPos.z, yaw: headPos.yaw });
+      if (tr.history.length > 90) tr.history.pop();
+    }
+
+    meshObj.cars.forEach((car, idx) => {
+      if (idx === 0) { car.position.set(headPos.x, headPos.y, headPos.z); car.rotation.y = headPos.yaw; }
+      else {
+        let targetDist = idx * 4.35, acc = 0, chosen = tr.history[tr.history.length - 1] || headPos;
+        for (let i = 1; i < tr.history.length; i++) {
+          acc += Math.hypot(tr.history[i].x - tr.history[i-1].x, tr.history[i].z - tr.history[i-1].z);
+          if (acc >= targetDist) { chosen = tr.history[i]; break; }
+        }
+        car.position.set(chosen.x, chosen.y, chosen.z); car.rotation.y = chosen.yaw;
+      }
+      car.visible = !(tr.id === rideTrainId && idx === 0);
+    });
+
+    if (meshObj.isSteam && tr.state === 'run' && Math.random() < 0.22) {
+      const p = smokePool.find(s => s.life <= 0);
+      if (p) { p.life = 1.1; p.mesh.position.set(headPos.x, headPos.y + 2.0, headPos.z); p.mesh.scale.setScalar(0.5); p.mesh.visible = true; }
+    }
+  });
+  smokePool.forEach(p => { if (p.life > 0) { p.life -= dt; p.mesh.position.y += dt * 2.6; p.mesh.scale.addScalar(dt * 1.3); if (p.life <= 0) p.mesh.visible = false; } });
+}
+
+function handleNeighborConnection(tr) {
+  const cat = TRAIN_CATALOG.find(c => c.id === tr.catId);
+  if (tr.gy >= MAP_H - 1 && !G.neighborsConnected.south) { G.neighborsConnected.south = true; addLog("🎉 東京方面直通！"); }
+  else if (tr.gy <= 0 && !G.neighborsConnected.north) { G.neighborsConnected.north = true; addLog("🎉 仙台方面直通！"); }
+  else if (tr.gx <= 0 && !G.neighborsConnected.west) { G.neighborsConnected.west = true; addLog("🎉 新潟方面直通！"); }
+  if (cat.type === 'pass') { G.money += Math.floor(cat.cap * 1.8 * G.prestigeMult); G.pop += Math.floor(cat.cap * 0.4 * G.prestigeMult); tr.pass = cat.cap; }
+  else tr.cargo = cat.cap;
+}
+
+function onTrainArriveStation(tr, tile) {
+  const st = tile.station, cat = TRAIN_CATALOG.find(c => c.id === tr.catId);
+  if (cat.type === 'pass') {
+    const drop = Math.floor(tr.pass * 0.7);
+    G.money += Math.floor(drop * (1.2 + st.lv * 0.5) * G.prestigeMult);
+    G.totalPassengers += drop; st.users += drop;
+    let nearPop = 60;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const ny = tile.y + dy, nx = tile.x + dx;
+      if (ny >= 0 && ny < MAP_H && nx >= 0 && nx < MAP_W && G.map[ny][nx].building) nearPop += G.map[ny][nx].building.pop * 0.15;
+    }
+    tr.pass = Math.min(cat.cap, Math.floor((tr.pass - drop) + nearPop));
+    G.pop += Math.floor(drop * 0.25 * G.prestigeMult);
+  } else {
+    let hasSupply = false;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+      const ny = tile.y + dy, nx = tile.x + dx;
+      if (ny >= 0 && ny < MAP_H && nx >= 0 && nx < MAP_W && (G.map[ny][nx].factory || G.map[ny][nx].depot)) hasSupply = true;
+    }
+    if (hasSupply && st.mat > 10 && tr.cargo < cat.cap) {
+      const load = Math.min(cat.cap - tr.cargo, st.mat); st.mat -= load; tr.cargo += load;
+    } else if (tr.cargo > 0) {
+      st.mat += tr.cargo; G.totalDeliveredMat += tr.cargo;
+      G.money += Math.floor(tr.cargo * 35 * G.prestigeMult); tr.cargo = 0;
+    }
+  }
+}
+
+function updateRoadCars(dt) {
+  if (roadCars.length < 12) {
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      if (G.map[y][x].road && Math.random() < 0.01 && roadCars.length < 12) {
+        const car = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 1.6), new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+        car.position.set(x * TILE + 10, 0.4, y * TILE + 10); scene.add(car);
+        roadCars.push({ mesh: car, gx: x, gy: y, dir: Math.floor(Math.random() * 4), prog: 0 });
+      }
+    }
+  }
+  const dVec = [[0,-1],[1,0],[0,1],[-1,0]];
+  roadCars.forEach(c => {
+    c.prog += dt * simSpeed * 0.85;
+    if (c.prog >= 1) {
+      c.prog = 0; c.gx += dVec[c.dir][0]; c.gy += dVec[c.dir][1];
+      if (c.gx < 0 || c.gx >= MAP_W || c.gy < 0 || c.gy >= MAP_H || !G.map[c.gy][c.gx].road) {
+        c.gx -= dVec[c.dir][0]; c.gy -= dVec[c.dir][1]; c.dir = (c.dir + 2) % 4;
+      }
+    }
+    c.mesh.position.set((c.gx + dVec[c.dir][0] * c.prog) * TILE + 10, 0.4, (c.gy + dVec[c.dir][1] * c.prog) * TILE + 10);
+    c.mesh.rotation.y = [Math.PI, Math.PI * 0.5, 0, -Math.PI * 0.5][c.dir];
+  });
+}
+
+let minimapDirty = true;
+function hourlyTick() {
+  G.simMinutes += 60;
+  if (G.simMinutes >= 1440) {
+    G.simMinutes -= 1440; G.day += 1;
+    let subInc = 0;
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      const b = G.map[y][x].building; if (b && b.owner === 'sub') subInc += b.income;
+    }
+    G.money += Math.floor(subInc * G.prestigeMult) - Math.floor(G.loan * 0.002);
+  }
+  for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+    const t = G.map[y][x];
+    if (t.factory) {
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        const ny = y + dy, nx = x + dx;
+        if (ny >= 0 && ny < MAP_H && nx >= 0 && nx < MAP_W && G.map[ny][nx].station) G.map[ny][nx].station.mat = Math.min(9999, G.map[ny][nx].station.mat + 2);
+      }
+    }
+    if (t.station && t.station.mat >= 4 && Math.random() < 0.4) {
+      const rx = x + Math.floor(Math.random() * 9) - 4, ry = y + Math.floor(Math.random() * 9) - 4;
+      if (rx >= 0 && rx < MAP_W && ry >= 0 && ry < MAP_H) {
+        const tg = G.map[ry][rx];
+        if (tg.terrain === 0 && !tg.rail && !tg.station && !tg.factory && !tg.depot) {
+          if (!tg.building) {
+            tg.building = { kind: '民間住宅', lv: 1, h: 4, owner: 'ai', income: 4, pop: 500 };
+            t.station.mat -= 3; G.pop += Math.floor(500 * G.prestigeMult); markTileDirty(rx, ry); minimapDirty = true;
+          } else if (tg.building.owner === 'ai' && tg.building.lv < 5 && t.station.mat >= tg.building.lv * 4) {
+            const b = tg.building; t.station.mat -= b.lv * 4; b.lv += 1;
+            b.h = b.lv === 2 ? 10 : b.lv === 3 ? 20 : b.lv === 4 ? 36 : 58;
+            b.pop = b.lv * b.lv * 1400; G.pop += Math.floor(b.pop * 0.5 * G.prestigeMult); markTileDirty(rx, ry); minimapDirty = true;
+          }
+        }
+      }
+    }
+  }
+}
+
+function updateSkyAndLighting(nowSec) {
+  const hr = (G.simMinutes % 1440) / 60, sunAngle = ((hr - 6) / 24) * Math.PI * 2;
+  const skyCol = new THREE.Color();
+  if (hr >= 6 && hr < 16) {
+    skyCol.setHex(0x9ec5d6); sunLight.color.setHex(0xfffbeb); sunLight.intensity = 1.25;
+    MAT.bldgOffice.emissiveIntensity = 0; MAT.bldgBrick.emissiveIntensity = 0; MAT.bldgGlass.emissiveIntensity = 0;
+  } else if (hr >= 16 && hr < 19) {
+    skyCol.setHex(0xd98a5f); sunLight.color.setHex(0xf97316); sunLight.intensity = 1.0;
+    MAT.bldgOffice.emissiveIntensity = 0.45; MAT.bldgBrick.emissiveIntensity = 0.45; MAT.bldgGlass.emissiveIntensity = 0.65;
+  } else {
+    skyCol.setHex(0x0b1222); sunLight.color.setHex(0x64748b); sunLight.intensity = 0.45;
+    MAT.bldgOffice.emissiveIntensity = 1.0; MAT.bldgBrick.emissiveIntensity = 1.0; MAT.bldgGlass.emissiveIntensity = 1.3;
+  }
+  scene.background.lerp(skyCol, 0.05); scene.fog.color.copy(scene.background);
+  if (shadowsEnabled) {
+    const cx = walkMode ? walkCam.x : orbit.tx, cz = walkMode ? walkCam.z : orbit.tz;
+    sunLight.position.set(cx + Math.cos(sunAngle) * 180, Math.max(40, Math.sin(sunAngle) * 200), cz + 90);
+    sunLight.target.position.set(cx, 0, cz);
+  }
+  if (waterMesh) waterMesh.position.y = -1.4 + Math.sin(nowSec * 1.2) * 0.08;
+}
+
+function updateChunkVisibility() {
+  const cxRef = rideTrainId ? camera.position.x : (walkMode ? walkCam.x : orbit.tx);
+  const czRef = rideTrainId ? camera.position.z : (walkMode ? walkCam.z : orbit.tz);
+  const maxDistSq = 380 * 380;
+  for (let cy = 0; cy < CHUNK_COUNT_Y; cy++) for (let cx = 0; cx < CHUNK_COUNT_X; cx++) {
+    const grp = chunkGroups[cy]?.[cx]; if (!grp) continue;
+    const dx = (cx + 0.5) * CHUNK_SIZE * TILE - cxRef, dz = (cy + 0.5) * CHUNK_SIZE * TILE - czRef;
+    grp.visible = (dx * dx + dz * dz) < maxDistSq;
+  }
+}
+
+// =========================================================================
+// ★ 誤爆ゼロ！A列車式「選択 → 3Dプレビュー → 確定」建設システム ★
+// =========================================================================
+const raycaster = new THREE.Raycaster(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+function getTileFromScreen(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(mouse, camera);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(groundPlane, hit)) return null;
+  const gx = Math.floor(hit.x / TILE), gy = Math.floor(hit.z / TILE);
+  if (gx < 0 || gx >= MAP_W || gy < 0 || gy >= MAP_H) return null;
+  return { x: gx, y: gy };
+}
+
+function clearPreview() {
+  while (previewGroup.children.length) {
+    const c = previewGroup.children.pop(); c.geometry.dispose();
+  }
+}
+
+function buildRoutePreview(sx, sy, ex, ey) {
+  previewRoute = [];
+  let cx = sx, cy = sy;
+  previewRoute.push({ x: cx, y: cy });
+  while (cx !== ex) { cx += cx < ex ? 1 : -1; previewRoute.push({ x: cx, y: cy }); }
+  while (cy !== ey) { cy += cy < ey ? 1 : -1; previewRoute.push({ x: cx, y: cy }); }
+
+  clearPreview();
+  const isHigh = currentTool === 'highrail';
+  const mat = new THREE.MeshBasicMaterial({ color: isHigh ? 0x38bdf8 : 0xfbbf24, transparent: true, opacity: 0.55 });
+  previewRoute.forEach(pt => {
+    const ok = isHigh || G.map[pt.y][pt.x].terrain === 0;
+    const box = new THREE.Mesh(new THREE.BoxGeometry(TILE * 0.45, 0.8, TILE * 0.45), ok ? mat : new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.6 }));
+    box.position.set(pt.x * TILE + TILE * 0.5, isHigh ? 4.4 : 0.4, pt.y * TILE + TILE * 0.5);
+    previewGroup.add(box);
+  });
+}
+
+function onTileTapped(gx, gy) {
+  const t = G.map[gy][gx];
+  cursorMesh.position.set(gx * TILE + TILE * 0.5, 0.3, gy * TILE + TILE * 0.5);
+  cursorMesh.visible = true;
+
+  const bar = document.getElementById('confirm-bar');
+  const txt = document.getElementById('confirm-text');
+  const btn = document.getElementById('btn-confirm-exec');
+
+  if (currentTool === 'inspect') {
+    let info = `座標(${gx},${gy}) `;
+    if (t.station) info += `🚉${t.station.name} Lv.${t.station.lv} [資材:${t.station.mat}t / 利用:${t.station.users}人]`;
+    else if (t.factory) info += `🏭資材工場`;
+    else if (t.depot) info += `📦資材置場`;
+    else if (t.building) info += `🏢${t.building.kind} Lv.${t.building.lv}`;
+    else info += t.terrain === 1 ? '🌊水域' : t.terrain === 2 ? '⛰️山岳' : '🌱平地・田園';
+    txt.textContent = info;
+    btn.style.display = 'none';
+    bar.style.display = 'flex';
+    return;
+  }
+
+  btn.style.display = 'inline-block';
+
+  // 線路2点敷設
+  if (currentTool === 'rail' || currentTool === 'highrail') {
+    if (!railAnchor) {
+      railAnchor = { x: gx, y: gy };
+      buildRoutePreview(gx, gy, gx, gy);
+      const unitCost = currentTool === 'highrail' ? 2500 : 500;
+      txt.innerHTML = `始点(${gx},${gy})を選択！ 続けて<b>終点</b>をタップ、またはここだけ敷設`;
+      btn.textContent = `✅ ここだけ敷設 (${fmtMoney(unitCost)})`;
+      bar.style.display = 'flex';
+    } else {
+      pendingTarget = { x: gx, y: gy };
+      buildRoutePreview(railAnchor.x, railAnchor.y, gx, gy);
+      const isHigh = currentTool === 'highrail';
+      const unitCost = isHigh ? 2500 : 500;
+      const validCnt = previewRoute.filter(pt => isHigh || G.map[pt.y][pt.x].terrain === 0).length;
+      txt.innerHTML = `ルート(${railAnchor.x},${railAnchor.y})→(${gx},${gy}) [${validCnt}マス]`;
+      btn.textContent = `✅ 敷設する (${fmtMoney(validCnt * unitCost)})`;
+      bar.style.display = 'flex';
+    }
+    return;
+  }
+
+  // 車両配置
+  if (currentTool === 'place_train' && pendingTrainCat) {
+    pendingTarget = { x: gx, y: gy };
+    const cat = TRAIN_CATALOG.find(c => c.id === pendingTrainCat);
+    if (!t.rail && !t.station) {
+      txt.textContent = `⚠️ (${gx},${gy}) は線路ではありません！線路か駅を選んでください`;
+      btn.style.display = 'none';
+    } else {
+      txt.innerHTML = `(${gx},${gy}) に <b>${cat.name}</b> を配置`;
+      btn.textContent = `✅ 配置する (${fmtMoney(cat.cost)})`;
+    }
+    bar.style.display = 'flex';
+    return;
+  }
+
+  // 単体建設・撤去ツール
+  pendingTarget = { x: gx, y: gy };
+  const labelMap = {
+    station: ['🚉 新駅を建設', 3000], upstation: ['🏛️ 駅をグレードUP', t.station ? Math.pow(10, t.station.lv) * 10000 : 0],
+    factory: ['🏭 資材工場を建設', 8000], depot: ['📦 資材置場を建設', 2000],
+    road: ['🛣️ 道路を整備', 200], bulldoze: ['🧨 撤去・解体', 100]
+  };
+  let info = labelMap[currentTool];
+  if (!info) {
+    const sub = SUBSIDIARIES.find(s => s.id === currentTool);
+    if (sub) info = [sub.name + 'を建設', sub.cost];
+  }
+  if (info) {
+    txt.innerHTML = `(${gx},${gy}) に <b>${info[0]}</b>`;
+    btn.textContent = `✅ 実行 (${fmtMoney(info[1])})`;
+    bar.style.display = 'flex';
+  }
+}
+
+function executePendingAction() {
+  if (currentTool === 'rail' || currentTool === 'highrail') {
+    const isHigh = currentTool === 'highrail', unitCost = isHigh ? 2500 : 500;
+    let built = 0;
+    previewRoute.forEach(pt => {
+      const t = G.map[pt.y][pt.x];
+      if (!isHigh && t.terrain !== 0) return;
+      if (t.rail && t.high === isHigh) return;
+      if (G.money < unitCost) return;
+      G.money -= unitCost; t.high = isHigh; t.rail = t.rail || 5;
+      recalcRailConnections(pt.x, pt.y);
+      built++;
+    });
+    if (built > 0) { minimapDirty = true; addLog(`🛤️ 線路を ${built}マス敷設しました。`, "#34d399"); }
+    else addLog("⚠️ 敷設できるマスがないか資金不足です。", "#fbbf24");
+    cancelPendingAction();
+    return;
+  }
+
+  if (!pendingTarget) return;
+  const { x: gx, y: gy } = pendingTarget;
+  const t = G.map[gy][gx];
+
+  if (currentTool === 'place_train' && pendingTrainCat) {
+    const cat = TRAIN_CATALOG.find(c => c.id === pendingTrainCat);
+    if ((t.rail || t.station) && G.money >= cat.cost) {
+      G.money -= cat.cost; const uid = G.nextTrainUid++;
+      const dirBits = [1, 2, 4, 8];
+      const firstBit = [0, 1, 2, 3].find(i => t.rail & dirBits[i]) ?? 2;
+      G.trains.push({
+        id: uid, catId: cat.id, gx, gy, dir: firstBit, inEdge: (firstBit + 2) % 4, outEdge: firstBit, prog: 0,
+        state: 'run', wait: 0, cargo: 0, pass: 0, branchMode: 'straight', schedule: 'all', toggleTurn: false,
+        name: `${cat.name.split(' ')[0]} #${uid}`, history: []
+      });
+      addLog(`🚆 (${gx},${gy}) に ${cat.name} を配置！`, "#34d399");
+      pendingTrainCat = null; selectTool('inspect');
+    }
+    cancelPendingAction(); return;
+  }
+
+  if (currentTool === 'bulldoze' && G.money >= 100) {
+    G.money -= 100; t.rail = 0; t.high = false; t.road = false; t.factory = false; t.depot = false;
+    if (t.station) { t.station = null; G.stationCount = Math.max(0, G.stationCount - 1); }
+    t.building = null; markTileDirty(gx, gy); minimapDirty = true;
+  } else if (currentTool === 'road' && t.terrain === 0 && !t.road && G.money >= 200) {
+    G.money -= 200; t.road = true; markTileDirty(gx, gy); minimapDirty = true;
+  } else if (currentTool === 'station' && t.terrain !== 2 && !t.station && G.money >= 3000) {
+    G.money -= 3000;
+    const sName = STATION_NAMES[G.stationCount % STATION_NAMES.length] + "駅";
+    G.stationCount += 1; t.station = { name: sName, lv: 1, mat: 10, users: 0 };
+    t.rail = t.rail || 5; recalcRailConnections(gx, gy); minimapDirty = true;
+    addLog(`🚉 新駅【${sName}】開業！`, "#34d399");
+  } else if (currentTool === 'upstation' && t.station && t.station.lv < 4) {
+    const cost = Math.pow(10, t.station.lv) * 10000;
+    if (G.money >= cost) { G.money -= cost; t.station.lv += 1; markTileDirty(gx, gy); addLog(`🏛️ ${t.station.name} Lv.${t.station.lv}！`, "#fbbf24"); }
+  } else if (currentTool === 'factory' && t.terrain === 0 && !t.rail && !t.station && !t.factory && G.money >= 8000) {
+    G.money -= 8000; t.factory = true; markTileDirty(gx, gy); minimapDirty = true;
+  } else if (currentTool === 'depot' && t.terrain === 0 && !t.rail && !t.station && !t.depot && G.money >= 2000) {
+    G.money -= 2000; t.depot = true; markTileDirty(gx, gy); minimapDirty = true;
+  } else {
+    const sub = SUBSIDIARIES.find(s => s.id === currentTool);
+    if (sub && t.terrain === 0 && !t.rail && !t.station && !t.factory && G.money >= sub.cost) {
+      G.money -= sub.cost;
+      t.building = { kind: sub.name, lv: 1, h: sub.h, owner: 'sub', income: sub.income, pop: sub.popAdd };
+      G.pop += Math.floor(sub.popAdd * G.prestigeMult); markTileDirty(gx, gy); minimapDirty = true;
+      addLog(`🏢 ${sub.name} を建設しました！`, "#f472b6");
+    }
+  }
+  cancelPendingAction();
+}
+
+function cancelPendingAction() {
+  railAnchor = null; pendingTarget = null; previewRoute = [];
+  clearPreview();
+  cursorMesh.visible = false;
+  document.getElementById('confirm-bar').style.display = 'none';
+}
+
+// =========================================================================
+// A列車オービット＆タッチコントローラー（1本指パン / 2本指回転＆ピンチ / タップ選択）
+// =========================================================================
+let ptrDownPos = { x: 0, y: 0 }, lastPtr = { x: 0, y: 0 }, ptrMode = 'none', lastPinchDist = 0, lastTwoCenter = { x: 0, y: 0 };
+
+function setupInputs() {
+  const dom = renderer.domElement;
+  dom.addEventListener('contextmenu', e => e.preventDefault());
+
+  dom.addEventListener('mousedown', e => {
+    ptrDownPos = { x: e.clientX, y: e.clientY }; lastPtr = { x: e.clientX, y: e.clientY };
+    ptrMode = (e.button === 2 || e.button === 1) ? 'rotate' : 'pan';
+  });
+  window.addEventListener('mouseup', e => {
+    if (ptrMode === 'pan' && !rideTrainId && !walkMode) {
+      if (Math.hypot(e.clientX - ptrDownPos.x, e.clientY - ptrDownPos.y) < 7) {
+        const t = getTileFromScreen(e.clientX, e.clientY);
+        if (t) onTileTapped(t.x, t.y);
+      }
+    }
+    ptrMode = 'none';
+  });
+  window.addEventListener('mousemove', e => {
+    if (ptrMode === 'none') return;
+    const dx = e.clientX - lastPtr.x, dy = e.clientY - lastPtr.y;
+    lastPtr = { x: e.clientX, y: e.clientY };
+    if (ptrMode === 'rotate') {
+      if (rideTrainId || walkMode) {
+        walkCam.yaw -= dx * 0.005; walkCam.pitch = Math.max(-0.8, Math.min(0.6, walkCam.pitch - dy * 0.005));
+      } else {
+        orbit.yaw -= dx * 0.006;
+        orbit.pitch = Math.max(0.18, Math.min(1.42, orbit.pitch + dy * 0.006));
+      }
+    } else if (ptrMode === 'pan' && !rideTrainId && !walkMode) {
+      const panSpd = orbit.dist * 0.0018;
+      const sinY = Math.sin(orbit.yaw), cosY = Math.cos(orbit.yaw);
+      orbit.tx = Math.max(0, Math.min(MAP_W * TILE, orbit.tx - (cosY * dx + sinY * dy) * panSpd));
+      orbit.tz = Math.max(0, Math.min(MAP_H * TILE, orbit.tz - (-sinY * dx + cosY * dy) * panSpd));
+    }
+  });
+  dom.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (!rideTrainId && !walkMode) orbit.dist = Math.max(18, Math.min(280, orbit.dist + e.deltaY * 0.08));
+  }, { passive: false });
+
+  // モバイルタッチ（1本指ドラッグ＝地図パン、2本指＝回転＆ピンチ、短いタップ＝タイル選択のみ！）
+  dom.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const tx = e.touches[0].clientX, ty = e.touches[0].clientY;
+      ptrDownPos = { x: tx, y: ty }; lastPtr = { x: tx, y: ty };
+      ptrMode = (rideTrainId || walkMode) ? 'rotate' : 'pan';
+    } else if (e.touches.length === 2) {
+      ptrMode = 'two';
+      lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      lastTwoCenter = { x: (e.touches[0].clientX + e.touches[1].clientX) * 0.5, y: (e.touches[0].clientY + e.touches[1].clientY) * 0.5 };
+    }
+  }, { passive: false });
+
+  dom.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const tx = e.touches[0].clientX, ty = e.touches[0].clientY;
+      const dx = tx - lastPtr.x, dy = ty - lastPtr.y;
+      lastPtr = { x: tx, y: ty };
+      if (ptrMode === 'rotate') {
+        walkCam.yaw -= dx * 0.006; walkCam.pitch = Math.max(-0.8, Math.min(0.6, walkCam.pitch - dy * 0.006));
+      } else if (ptrMode === 'pan' && !rideTrainId && !walkMode) {
+        const panSpd = orbit.dist * 0.0022;
+        const sinY = Math.sin(orbit.yaw), cosY = Math.cos(orbit.yaw);
+        orbit.tx = Math.max(0, Math.min(MAP_W * TILE, orbit.tx - (cosY * dx + sinY * dy) * panSpd));
+        orbit.tz = Math.max(0, Math.min(MAP_H * TILE, orbit.tz - (-sinY * dx + cosY * dy) * panSpd));
+      }
+    } else if (e.touches.length === 2 && !rideTrainId && !walkMode) {
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) * 0.5, cy = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+      orbit.dist = Math.max(18, Math.min(280, orbit.dist + (lastPinchDist - dist) * 0.35));
+      orbit.yaw -= (cx - lastTwoCenter.x) * 0.006;
+      orbit.pitch = Math.max(0.18, Math.min(1.42, orbit.pitch + (cy - lastTwoCenter.y) * 0.005));
+      lastPinchDist = dist; lastTwoCenter = { x: cx, y: cy };
+    }
+  }, { passive: false });
+
+  dom.addEventListener('touchend', e => {
+    if (e.touches.length === 0 && ptrMode === 'pan' && !rideTrainId && !walkMode) {
+      if (Math.hypot(lastPtr.x - ptrDownPos.x, lastPtr.y - ptrDownPos.y) < 12) {
+        const t = getTileFromScreen(lastPtr.x, lastPtr.y);
+        if (t) onTileTapped(t.x, t.y);
+      }
+    }
+    if (e.touches.length === 0) ptrMode = 'none';
+  });
+
+  document.getElementById('minimap').addEventListener('click', e => {
+    const r = e.target.getBoundingClientRect(), scale = MAP_W / r.width;
+    jumpTo(Math.floor((e.clientX - r.left) * scale), Math.floor((e.clientY - r.top) * scale));
+  });
+  window.addEventListener('keydown', e => { if (e.target.tagName !== 'TEXTAREA') keysDown[e.key.toLowerCase()] = true; });
+  window.addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; });
+}
+
+// =========================================================================
+// ドロワーUI・経営操作
+// =========================================================================
+function openDrawer(tab, btn) {
+  const dr = document.getElementById('main-drawer');
+  if (activeDrawer === tab && dr.classList.contains('open')) { closeDrawer(); return; }
+  activeDrawer = tab;
+  document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  dr.classList.add('open');
+  renderDrawerContent(tab);
+}
+function closeDrawer() { document.getElementById('main-drawer').classList.remove('open'); }
+
+function renderDrawerContent(tab) {
+  const title = document.getElementById('drawer-title'), body = document.getElementById('drawer-body');
+  if (tab === 'rail') {
+    title.textContent = "🛤️ 鉄道・インフラ建設（タップ選択 → 確定）";
+    body.innerHTML = `<div class="tool-grid">` + TOOLS.map(t => `
+      <button class="tool-btn ${currentTool===t.id?'active':''}" onclick="selectTool('${t.id}')">
+        ${t.name}<span class="tool-cost">${t.costText}</span>
+      </button>`).join('') + `</div>`;
+  } else if (tab === 'sub') {
+    title.textContent = "🏢 子会社・福島名所ランドマーク";
+    body.innerHTML = `<div class="tool-grid">` + SUBSIDIARIES.map(s => `
+      <button class="tool-btn ${currentTool===s.id?'active':''}" onclick="selectTool('${s.id}')">
+        ${s.name}<span class="tool-cost">${fmtMoney(s.cost)}</span>
+      </button>`).join('') + `</div>`;
+  } else if (tab === 'train') {
+    title.textContent = "🚆 車両の自由配置・ダイヤ設定";
+    let html = `<div style="font-size:0.74rem;color:#94a3b8;margin-bottom:6px;">購入したい車両を選び、マップ上の置きたい線路をタップしてください。</div>`;
+    html += TRAIN_CATALOG.map(c => `
+      <div class="card"><div class="card-hdr"><span>${c.name}</span>
+      <button class="btn btn-sm btn-green" onclick="startPlaceTrain('${c.id}')">配置 (${fmtMoney(c.cost)})</button></div>
+      <div style="font-size:0.7rem;color:#94a3b8;">${c.type==='cargo'?'貨物(資材輸送)':'旅客'} | 容量:${c.cap} | 速度:${c.speed}x</div></div>
+    `).join('');
+    html += `<div style="font-weight:bold;color:var(--accent);margin:10px 0 6px;">📋 運行中列車 (${G.trains.length}編成)</div>`;
+    html += G.trains.map(tr => {
+      const cat = TRAIN_CATALOG.find(c => c.id === tr.catId);
+      return `
+        <div class="card"><div class="card-hdr"><span style="color:${cat.col};">${tr.name}</span>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-sm btn-gold" onclick="rideTrainCab(${tr.id})">👁️車窓</button>
+          <button class="btn btn-sm" onclick="reverseTrain(${tr.id})">🔄</button>
+          <button class="btn btn-sm btn-red" onclick="removeTrain(${tr.id})">🗑️</button>
+        </div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.7rem;gap:4px;flex-wrap:wrap;">
+          <span>積載:${cat.type==='cargo'?tr.cargo+'t':tr.pass+'人'}</span>
+          <select onchange="setTrainBranch(${tr.id}, this.value)">
+            <option value="straight" ${tr.branchMode==='straight'?'selected':''}>分岐:直進</option>
+            <option value="auto" ${tr.branchMode==='auto'?'selected':''}>分岐:自動交互</option>
+            <option value="left" ${tr.branchMode==='left'?'selected':''}>分岐:左折</option>
+            <option value="right" ${tr.branchMode==='right'?'selected':''}>分岐:右折</option>
+          </select>
+          <select onchange="setTrainSchedule(${tr.id}, this.value)">
+            <option value="all" ${tr.schedule==='all'?'selected':''}>24時間</option>
+            <option value="day" ${tr.schedule==='day'?'selected':''}>6-23時</option>
+          </select>
+        </div></div>`;
+    }).join('');
+    body.innerHTML = html;
+  } else if (tab === 'city') {
+    title.textContent = "📍 福島拠点ジャンプ＆開発ログ";
+    body.innerHTML = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn btn-sm" onclick="jumpTo(20,10)">福島中央</button>
+        <button class="btn btn-sm" onclick="jumpTo(20,22)">郡山</button>
+        <button class="btn btn-sm" onclick="jumpTo(32,28)">いわき</button>
+        <button class="btn btn-sm" onclick="jumpTo(9,20)">会津若松</button>
+        <button class="btn btn-sm" onclick="jumpTo(20,38)">白河(東京口)</button>
+      </div>
+      <div id="drawer-log" style="background:#05080f;border:1px solid #2c3d57;border-radius:6px;padding:8px;height:160px;overflow-y:auto;font-family:monospace;font-size:0.72rem;">
+        ${logHistory.map(l => `<div style="color:${l.col};margin-bottom:2px;">${l.txt}</div>`).join('')}
+      </div>`;
+  } else if (tab === 'goal') {
+    title.textContent = "📊 経営・銀行・100時間目標・セーブ";
+    const popPct = Math.min(100, (G.pop / 10000000) * 100);
+    const railCount = G.map.flat().filter(t => t.rail > 0).length;
+    body.innerHTML = `
+      <div class="card">
+        <div><b>🏆 人口1,000万人目標:</b> ${fmtPop(G.pop)} (${popPct.toFixed(1)}%)</div>
+        <div>総延長: ${railCount}マス / 駅: ${G.stationCount}駅 / 乗客: ${G.totalPassengers.toLocaleString()}人 / 資材: ${G.totalDeliveredMat.toLocaleString()}t</div>
+        <div>隣町直通: 東京(${G.neighborsConnected.south?'✅':'未'}) 仙台(${G.neighborsConnected.north?'✅':'未'}) 新潟(${G.neighborsConnected.west?'✅':'未'})</div>
+      </div>
+      <div class="card">
+        <div style="margin-bottom:6px;">🏦 借入金: <b style="color:#f87171;">${fmtMoney(G.loan)}</b></div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-gold" onclick="takeLoan(50000)">5億円借入</button>
+          <button class="btn btn-sm btn-gold" onclick="takeLoan(500000)">50億円借入</button>
+          <button class="btn btn-sm btn-green" onclick="repayLoan()">返済</button>
+        </div>
+      </div>
+      <div class="card">
+        <div style="margin-bottom:6px;">🌀 都市計画再編（転生）倍率: <b style="color:var(--gold);">x${G.prestigeMult.toFixed(2)}</b></div>
+        <button class="btn btn-sm btn-purple" ${G.pop<1000000?'disabled':''} onclick="doPrestige()">再編実行 (要人口100万)</button>
+      </div>
+      <div class="card">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
+          <button class="btn btn-sm btn-green" onclick="saveGame(true)">💾 保存</button>
+          <button class="btn btn-sm" onclick="exportSave()">📤 出力</button>
+          <button class="btn btn-sm btn-gold" onclick="importSave()">📥 復元</button>
+          <button class="btn btn-sm btn-red" onclick="hardReset()">🗑️ 初期化</button>
+        </div>
+        <textarea id="save-box" rows="2" style="width:100%;background:#05080f;color:#93c5fd;border:1px solid #334155;font-size:0.7rem;padding:4px;"></textarea>
+      </div>`;
+  }
+}
+
+function selectTool(id) {
+  currentTool = id; pendingTrainCat = null; cancelPendingAction();
+  const label = TOOLS.find(t=>t.id===id)?.name || SUBSIDIARIES.find(s=>s.id===id)?.name || id;
+  document.getElementById('inspector-pill').innerHTML = `<b>${label}</b><br>タップで場所を選択 →「決定」で実行<br><span style="color:#94a3b8;">1本指:地図移動 / 2本指(右):回転・ズーム</span>`;
+  if (activeDrawer) renderDrawerContent(activeDrawer);
+  if (isMobile) closeDrawer();
+}
+
+function startPlaceTrain(catId) {
+  pendingTrainCat = catId; currentTool = 'place_train'; cancelPendingAction();
+  document.getElementById('inspector-pill').innerHTML = `🚆 <b>車両配置</b><br>置きたい線路・駅をタップしてください`;
+  closeDrawer();
+}
+
+function removeTrain(id) {
+  const idx = G.trains.findIndex(t => t.id === id); if (idx === -1) return;
+  const tr = G.trains[idx], cat = TRAIN_CATALOG.find(c => c.id === tr.catId);
+  G.money += Math.floor(cat.cost * 0.5);
+  if (rideTrainId === id) exitTrainCab();
+  if (trainMeshes[id]) { scene.remove(trainMeshes[id].group); delete trainMeshes[id]; }
+  G.trains.splice(idx, 1); renderDrawerContent('train');
+}
+
+function rideTrainCab(id) {
+  walkMode = false; document.getElementById('walk-pad').style.display = 'none';
+  document.getElementById('btn-walk').textContent = "🚶 街歩き";
+  rideTrainId = id; closeDrawer(); cancelPendingAction();
+  document.getElementById('btn-exit-cab').style.display = 'inline-block';
+  document.getElementById('cab-overlay').style.display = 'block';
+  walkCam.pitch = -0.04;
+}
+function exitTrainCab() {
+  rideTrainId = null;
+  document.getElementById('btn-exit-cab').style.display = 'none';
+  document.getElementById('cab-overlay').style.display = 'none';
+}
+
+function toggleWalkMode() {
+  if (rideTrainId) exitTrainCab();
+  walkMode = !walkMode;
+  const btn = document.getElementById('btn-walk'), pad = document.getElementById('walk-pad');
+  if (walkMode) {
+    walkCam.x = orbit.tx; walkCam.z = orbit.tz; walkCam.yaw = orbit.yaw + Math.PI; walkCam.pitch = 0.02;
+    btn.className = "btn btn-sm btn-gold"; btn.textContent = "🦅 空へ";
+    pad.style.display = 'grid'; closeDrawer(); cancelPendingAction();
+  } else {
+    orbit.tx = walkCam.x; orbit.tz = walkCam.z;
+    btn.className = "btn btn-sm btn-green"; btn.textContent = "🚶 街歩き";
+    pad.style.display = 'none';
+  }
+}
+
+function toggleEcoMode() { ecoFps = ecoFps === 30 ? 60 : 30; document.getElementById('btn-eco').textContent = ecoFps === 30 ? "🔋30fps" : "⚡60fps"; }
+function toggleShadow() {
+  shadowsEnabled = !shadowsEnabled; renderer.shadowMap.enabled = shadowsEnabled; sunLight.castShadow = shadowsEnabled;
+  document.getElementById('btn-shadow').textContent = shadowsEnabled ? "☀️影ON" : "☁️影OFF";
+}
+function setPadKey(k, down) { keysDown[k] = down; }
+function setSimSpeed(spd, btn) { simSpeed = spd; document.querySelectorAll('.spd-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+function jumpTo(gx, gy) {
+  exitTrainCab(); if (walkMode) toggleWalkMode();
+  orbit.tx = gx * TILE + TILE * 0.5; orbit.tz = gy * TILE + TILE * 0.5; closeDrawer();
+}
+function setTrainBranch(id, v) { const t = G.trains.find(x => x.id === id); if (t) t.branchMode = v; }
+function setTrainSchedule(id, v) { const t = G.trains.find(x => x.id === id); if (t) t.schedule = v; }
+function reverseTrain(id) { const t = G.trains.find(x => x.id === id); if (t) { const tmp = t.inEdge; t.inEdge = t.outEdge; t.outEdge = tmp; t.prog = 1 - t.prog; } }
+function takeLoan(amt) { G.loan += amt; G.money += amt; renderDrawerContent('goal'); }
+function repayLoan() { const p = Math.min(G.loan, Math.max(0, G.money)); G.loan -= p; G.money -= p; renderDrawerContent('goal'); }
+function doPrestige() {
+  if (G.pop < 1000000) return;
+  const gain = Number((Math.pow(G.pop / 500000, 0.4) * 0.5).toFixed(2));
+  if (!confirm(`都市計画再編を実行しますか？\n総裁倍率が永続 +${gain}倍 になります！`)) return;
+  G.prestigeMult = Number((G.prestigeMult + gain).toFixed(2)); G.prestigeCount += 1;
+  G.money = 35000 * G.prestigeMult; G.loan = 0; G.pop = 180000;
+  Object.values(trainMeshes).forEach(m => scene.remove(m.group)); trainMeshes = {}; G.trains = [];
+  roadCars.forEach(c => scene.remove(c.mesh)); roadCars = [];
+  exitTrainCab(); initMap(); buildTerrainMesh();
+  for (let cy = 0; cy < CHUNK_COUNT_Y; cy++) for (let cx = 0; cx < CHUNK_COUNT_X; cx++) dirtyChunks.add(`${cx},${cy}`);
+  minimapDirty = true; renderDrawerContent('goal');
+}
+
+function fmtMoney(man) {
+  const abs = Math.abs(man), s = man < 0 ? "-" : "";
+  if (abs < 10000) return s + Math.floor(abs).toLocaleString() + "万円";
+  if (abs < 1e8) return s + (abs / 10000).toFixed(2) + "億円";
+  return s + (abs / 1e8).toFixed(2) + "兆円";
+}
+function fmtPop(p) { return p < 10000 ? Math.floor(p).toLocaleString() + "人" : (p / 10000).toFixed(1) + "万人"; }
+function fmtTime(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+  return `${String(h).padStart(3,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+const logHistory = [];
+function addLog(msg, col = "#cbd5e1") {
+  logHistory.unshift({ txt: `[${G.day}日] ${msg}`, col });
+  if (logHistory.length > 40) logHistory.pop();
+  if (activeDrawer === 'city') renderDrawerContent('city');
+}
+
+const miniCanvas = document.getElementById('minimap'), miniCtx = miniCanvas.getContext('2d');
+const miniCache = document.createElement('canvas'); miniCache.width = 96; miniCache.height = 96;
+const miniCacheCtx = miniCache.getContext('2d');
+function renderMinimap() {
+  const s = 96 / MAP_W;
+  if (minimapDirty) {
+    minimapDirty = false;
+    for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
+      const t = G.map[y][x];
+      let col = "#3b4d2b";
+      if (t.terrain === 1) col = "#1b4965"; else if (t.terrain === 2) col = "#2a3326";
+      if (t.building) col = t.building.owner === 'sub' ? "#db2777" : "#94a3b8";
+      if (t.factory) col = "#b91c1c"; if (t.depot) col = "#0284c7";
+      if (t.rail) col = "#eab308"; if (t.station) col = "#ffffff";
+      miniCacheCtx.fillStyle = col; miniCacheCtx.fillRect(x * s, y * s, s, s);
+    }
+  }
+  miniCtx.drawImage(miniCache, 0, 0);
+  miniCtx.fillStyle = "#fde047";
+  G.trains.forEach(tr => miniCtx.fillRect(tr.gx * s, tr.gy * s, s, s));
+  miniCtx.strokeStyle = "#f43f5e"; miniCtx.lineWidth = 1.5;
+  miniCtx.strokeRect((orbit.tx / TILE) * s - 3, (orbit.tz / TILE) * s - 3, 6, 6);
+}
+
+// =========================================================================
+// メインループ
+// =========================================================================
+let lastTime = performance.now(), lastRenderTime = performance.now(), hourAccum = 0, hudAccum = 0;
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  if (document.hidden) { lastTime = now; return; }
+  if (now - lastRenderTime < (1000 / ecoFps) * 0.9) return;
+  lastRenderTime = now;
+
+  const dt = Math.min(0.1, (now - lastTime) / 1000);
+  lastTime = now; G.playTime += dt;
+
+  if (dirtyChunks.size > 0) {
+    let cnt = 0;
+    for (const key of dirtyChunks) {
+      const [cx, cy] = key.split(',').map(Number);
+      rebuildChunk(cx, cy); dirtyChunks.delete(key);
+      if (++cnt >= 2) break;
+    }
+  }
+
+  // カメラ制御（車窓 / 街歩き / A列車オービット）
+  if (rideTrainId) {
+    const tr = G.trains.find(t => t.id === rideTrainId);
+    if (tr) {
+      const pos = getTrainArcPos(tr);
+      if (ptrMode !== 'rotate') {
+        let diff = pos.yaw - walkCam.yaw;
+        while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
+        walkCam.yaw += diff * Math.min(1, dt * 8);
+      }
+      camera.position.set(pos.x, pos.y + 1.55, pos.z);
+      camera.lookAt(
+        pos.x + Math.sin(walkCam.yaw) * Math.cos(walkCam.pitch) * 30,
+        pos.y + 1.55 + Math.sin(walkCam.pitch) * 30,
+        pos.z + Math.cos(walkCam.yaw) * Math.cos(walkCam.pitch) * 30
+      );
+      document.getElementById('cab-title').textContent = `🚆 ${tr.name}`;
+      document.getElementById('cab-status').textContent = `${tr.state==='wait'?'🚉停車':'走行'} | 乗客:${tr.pass} | 資材:${tr.cargo}t`;
+    }
+  } else if (walkMode) {
+    const spd = 14 * dt, sinY = Math.sin(walkCam.yaw), cosY = Math.cos(walkCam.yaw);
+    if (keysDown['w'] || keysDown['arrowup']) { walkCam.x += sinY * spd; walkCam.z += cosY * spd; }
+    if (keysDown['s'] || keysDown['arrowdown']) { walkCam.x -= sinY * spd; walkCam.z -= cosY * spd; }
+    if (keysDown['a'] || keysDown['arrowleft']) { walkCam.x += cosY * spd; walkCam.z -= sinY * spd; }
+    if (keysDown['d'] || keysDown['arrowright']) { walkCam.x -= cosY * spd; walkCam.z += sinY * spd; }
+    camera.position.set(walkCam.x, 1.75, walkCam.z);
+    camera.lookAt(
+      walkCam.x + sinY * Math.cos(walkCam.pitch) * 30,
+      1.75 + Math.sin(walkCam.pitch) * 30,
+      walkCam.z + cosY * Math.cos(walkCam.pitch) * 30
+    );
+  } else {
+    // PCキーボード補助もオービット注視点移動に統一
+    const kSpd = orbit.dist * 0.65 * dt, sinY = Math.sin(orbit.yaw), cosY = Math.cos(orbit.yaw);
+    if (keysDown['w'] || keysDown['arrowup']) { orbit.tx -= sinY * kSpd; orbit.tz -= cosY * kSpd; }
+    if (keysDown['s'] || keysDown['arrowdown']) { orbit.tx += sinY * kSpd; orbit.tz += cosY * kSpd; }
+    if (keysDown['a'] || keysDown['arrowleft']) { orbit.tx -= cosY * kSpd; orbit.tz += sinY * kSpd; }
+    if (keysDown['d'] || keysDown['arrowright']) { orbit.tx += cosY * kSpd; orbit.tz -= sinY * kSpd; }
+
+    const cx = orbit.tx + orbit.dist * Math.cos(orbit.pitch) * Math.sin(orbit.yaw);
+    const cy = Math.max(2, orbit.dist * Math.sin(orbit.pitch));
+    const cz = orbit.tz + orbit.dist * Math.cos(orbit.pitch) * Math.cos(orbit.yaw);
+    camera.position.set(cx, cy, cz);
+    camera.lookAt(orbit.tx, 0, orbit.tz);
+  }
+
+  if (simSpeed > 0) {
+    updateTrains(dt); updateRoadCars(dt);
+    hourAccum += dt * simSpeed;
+    if (hourAccum >= 2.0) { hourAccum -= 2.0; hourlyTick(); }
+  }
+
+  updateChunkVisibility();
+  updateSkyAndLighting(now / 1000);
+  renderer.render(scene, camera);
+
+  hudAccum += dt;
+  if (hudAccum >= 0.3) {
+    hudAccum = 0; renderMinimap();
+    const h = Math.floor((G.simMinutes % 1440) / 60), m = Math.floor(G.simMinutes % 60);
+    document.getElementById('hud-date').textContent = `${Math.floor(G.day/365)+1}年${G.day%365}日 ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    document.getElementById('hud-money').textContent = fmtMoney(G.money);
+    document.getElementById('hud-pop').textContent = fmtPop(G.pop);
+    document.getElementById('hud-playtime').textContent = `⏱${fmtTime(G.playTime)}`;
+  }
+}
+
+const SAVE_KEY = "fukushima_atrain_real_v1";
+function saveGame(m = false) { localStorage.setItem(SAVE_KEY, JSON.stringify(G)); if (m) addLog("💾 保存しました", "#38bdf8"); }
+function loadGame() {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (raw) { try { G = Object.assign(G, JSON.parse(raw)); return true; } catch (e) {} }
+  return false;
+}
+function exportSave() { document.getElementById('save-box').value = btoa(unescape(encodeURIComponent(JSON.stringify(G)))); }
+function importSave() { try { G = JSON.parse(decodeURIComponent(escape(atob(document.getElementById('save-box').value.trim())))); saveGame(); location.reload(); } catch (e) { alert("無効データ"); } }
+function hardReset() { if (confirm("初期化しますか？")) { localStorage.removeItem(SAVE_KEY); location.reload(); } }
+
+Object.assign(window, {
+  setSimSpeed, toggleEcoMode, toggleShadow, toggleWalkMode, exitTrainCab, setPadKey,
+  openDrawer, closeDrawer, selectTool, executePendingAction, cancelPendingAction,
+  startPlaceTrain, removeTrain, rideTrainCab, reverseTrain, setTrainBranch, setTrainSchedule,
+  jumpTo, takeLoan, repayLoan, doPrestige, saveGame, exportSave, importSave, hardReset
+});
+
+(async () => {
+  initAssets();
+  await initRenderer();
+  initSmokePool();
+  if (!loadGame()) {
+    initMap();
+    addLog("🚆 起動！ 1本指で地図を動かし、タップ→決定で誤爆せずに建設できます。", "#34d399");
+  }
+  buildTerrainMesh();
+  for (let cy = 0; cy < CHUNK_COUNT_Y; cy++) for (let cx = 0; cx < CHUNK_COUNT_X; cx++) rebuildChunk(cx, cy);
+  setupInputs();
+  setInterval(() => saveGame(false), 5000);
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>
